@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOCODESTA NEXTGEN - Georeferenced</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1a1a2e; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        .ui-layer { position: absolute; z-index: 10; pointer-events: none; }
+        .ui-interactive { pointer-events: auto; }
+        .glass-panel { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        input[type=range] { -webkit-appearance: none; background: transparent; width: 100%; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -6px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #475569; border-radius: 2px; }
+    </style>
+</head>
+<body class="text-white">
+
+    <div id="canvas-container"></div>
+
+    <div class="ui-layer ui-interactive top-0 w-full flex justify-between items-center p-2 glass-panel">
+        <div class="flex items-center space-x-4 ml-2">
+            <div class="bg-red-600 rounded p-1"><i class="fas fa-globe text-white"></i></div>
+            <h1 class="font-bold text-sm tracking-wide">MOCODESTA NEXTGEN<span class="text-xs font-normal text-gray-400"> by Rahmat Supriyanto</span></h1>
+        </div>
+        
+        <div class="flex space-x-2 text-xs font-semibold">
+            <button class="px-4 py-2 bg-blue-600 rounded shadow-[0_0_10px_rgba(37,99,235,0.5)]">360° GEO-OVERLAY</button>
+            <div class="flex items-center space-x-2 px-3">
+                <div id="sync-status" class="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                <span id="sync-text" class="text-gray-300">WAITING GPS DATA</span>
+            </div>
+        </div>
+
+        <div class="flex space-x-3 mr-2 text-sm">
+            <label class="cursor-pointer px-4 py-2 bg-gray-800 rounded hover:bg-gray-700 transition flex items-center space-x-2">
+                <i class="fas fa-camera"></i> <span>Foto 360 (UTM)</span>
+                <input type="file" id="upload360" accept="image/*" class="hidden">
+            </label>
+            <label class="cursor-pointer px-4 py-2 bg-gray-800 border border-blue-500 rounded hover:bg-gray-700 transition flex items-center space-x-2">
+                <i class="fas fa-file-alt"></i> <span>File .DXF (UTM)</span>
+                <input type="file" id="uploadDXF" accept=".dxf" class="hidden">
+            </label>
+        </div>
+    </div>
+
+    <div class="ui-layer ui-interactive top-20 left-4 space-y-4">
+        <div class="glass-panel p-3 rounded-lg text-xs space-y-1">
+            <div class="text-blue-400 font-semibold mb-1"><i class="fas fa-map-marker-alt"></i> Status Georeference</div>
+            <div id="info-drone-pos" class="text-gray-300">Drone Pos: Belum dimuat</div>
+            <div id="info-dxf-pos" class="text-gray-300">DXF Anchor: Belum dimuat</div>
+        </div>
+    </div>
+
+    <!-- Widget Kompas Mata Angin & Heading/Pitch -->
+    <div class="ui-layer top-20 right-6 text-center">
+        <div class="w-20 h-20 rounded-full glass-panel border-2 border-gray-600 flex items-center justify-center relative mb-2 mx-auto shadow-xl">
+            <!-- Label Mata Angin Utama -->
+            <span class="absolute top-1 text-[10px] font-bold text-red-400">U</span>
+            <span class="absolute right-1 text-[10px] font-bold text-gray-400">T</span>
+            <span class="absolute bottom-1 text-[10px] font-bold text-gray-400">S</span>
+            <span class="absolute left-1 text-[10px] font-bold text-gray-400">B</span>
+            
+            <!-- Jarum Kompas -->
+            <div id="compass-arrow" class="absolute w-1 h-10 bg-red-500 top-1.5 origin-bottom transform transition-transform duration-100 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div>
+            <div class="w-2 h-2 bg-white rounded-full z-10 shadow"></div>
+        </div>
+        <div class="text-xs font-mono bg-black/60 px-3 py-1.5 rounded-md backdrop-blur-sm border border-gray-700 shadow-lg">
+            <div id="heading-val" class="font-bold text-blue-400">0° (U)</div>
+            <div id="pitch-val" class="text-gray-400 mt-0.5">Pitch: 0°</div>
+        </div>
+    </div>
+
+    <div class="ui-layer ui-interactive bottom-8 left-1/2 transform -translate-x-1/2 glass-panel rounded-full px-6 py-3 flex items-center space-x-6 w-3/4 max-w-4xl text-xs">
+        <div class="flex-1 flex items-center space-x-3">
+            <span class="text-gray-400 font-semibold w-12">Tinggi Z:</span>
+            <input type="range" id="sliderZ" min="-100" max="100" value="0" step="0.5">
+            <span id="valZ" class="w-16 text-right font-mono">0.00m</span>
+        </div>
+
+        <div class="flex-1 flex items-center space-x-3">
+            <span class="text-gray-400 font-semibold w-14">Rotasi:</span>
+            <input type="range" id="sliderRot" min="-180" max="180" value="0">
+            <span id="valRot" class="w-12 text-right font-mono">0.0°</span>
+        </div>
+
+        <div class="flex-1 flex items-center space-x-3">
+            <span class="text-gray-400 font-semibold w-12">Skala:</span>
+            <input type="range" id="sliderScale" min="0.1" max="5" step="0.01" value="1">
+            <span id="valScale" class="w-12 text-right font-mono">1.00x</span>
+        </div>
+
+        <button id="btnReset" class="flex flex-col items-center text-gray-400 hover:text-white transition">
+            <i class="fas fa-crosshairs mb-1"></i>
+            <span style="font-size: 0.6rem;">Reset</span>
+        </button>
+    </div>
+
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
+
+    <script>
+        // Setup Three.js Scene
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.set(0, 0, 0.1);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 0.1; 
+        controls.maxDistance = 1000;  
+
+        // Panorama 360 Sphere
+        const sphereGeometry = new THREE.SphereGeometry(500, 60, 40);
+        sphereGeometry.scale(-1, 1, 1); 
+        const textureLoader = new THREE.TextureLoader();
+        const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0x1e293b, wireframe: true }); 
+        const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        scene.add(sphere);
+
+        // DXF Group Container
+        const dxfGroup = new THREE.Group();
+        scene.add(dxfGroup);
+
+        let droneUTM = { x: null, y: null };
+        let rawDxfData = null;
+        let dxfAnchor = { x: 0, y: 0 };
+
+        function convertDMSToDeg(dms, ref) {
+            if (!dms) return 0;
+            let floatDeg = dms[0] + dms[1] / 60 + dms[2] / 3600;
+            if (ref === "S" || ref === "W") floatDeg *= -1;
+            return floatDeg;
+        }
+
+        function getUTMProjString(lon) {
+            let zone = Math.floor((lon + 180) / 6) + 1;
+            return `+proj=utm +zone=${zone} +south +ellps=WGS84 +datum=WGS84 +units=m +no_defs`;
+        }
+
+        // Helper untuk Konversi Derajat ke Nama Mata Angin
+        function getCardinalDirection(angle) {
+            const directions = ['U', 'TL', 'T', 'TG', 'S', 'BD', 'B', 'BL'];
+            const index = Math.round((angle % 360) / 45);
+            return directions[index % 8];
+        }
+
+        // Upload Foto 360 & Ekstrak GPS EXIF
+        document.getElementById('upload360').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                textureLoader.load(e.target.result, function(texture) {
+                    sphere.material.dispose();
+                    sphere.material = new THREE.MeshBasicMaterial({ map: texture });
+                });
+            };
+            reader.readAsDataURL(file);
+
+            EXIF.getData(file, function() {
+                const latTag = EXIF.getTag(this, "GPSLatitude");
+                const latRef = EXIF.getTag(this, "GPSLatitudeRef");
+                const lonTag = EXIF.getTag(this, "GPSLongitude");
+                const lonRef = EXIF.getTag(this, "GPSLongitudeRef");
+
+                if (latTag && lonTag) {
+                    const lat = convertDMSToDeg(latTag, latRef);
+                    const lon = convertDMSToDeg(lonTag, lonRef);
+                    
+                    const utmProj = getUTMProjString(lon);
+                    const coords = proj4('EPSG:4326', utmProj, [lon, lat]);
+                    
+                    droneUTM = { x: coords[0], y: coords[1] };
+                    
+                    document.getElementById('info-drone-pos').innerText = `Drone UTM: X=${droneUTM.x.toFixed(1)}, Y=${droneUTM.y.toFixed(1)}`;
+                    document.getElementById('sync-status').className = "w-2 h-2 bg-green-500 rounded-full animate-pulse";
+                    document.getElementById('sync-text').innerText = "GPS SYNCED";
+
+                    if (rawDxfData) processAndRenderDXF(rawDxfData);
+                } else {
+                    alert("Metadata GPS EXIF tidak ditemukan pada foto 360 ini. Menggunakan titik referensi default (0,0).");
+                    droneUTM = { x: 0, y: 0 };
+                    if (rawDxfData) processAndRenderDXF(rawDxfData);
+                }
+            });
+        });
+
+        // Upload DXF
+        document.getElementById('uploadDXF').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parser = new DxfParser();
+                    rawDxfData = parser.parseSync(e.target.result);
+                    processAndRenderDXF(rawDxfData);
+                } catch (err) {
+                    alert("Gagal memparsing file DXF.");
+                    console.error(err);
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Auto-Georeferencing & Overlay Engine
+        function processAndRenderDXF(dxf) {
+            while(dxfGroup.children.length > 0){ 
+                dxfGroup.remove(dxfGroup.children[0]); 
+            }
+
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+
+            dxf.entities.forEach(ent => {
+                if (ent.vertices) {
+                    ent.vertices.forEach(v => {
+                        if (v.x < minX) minX = v.x;
+                        if (v.x > maxX) maxX = v.x;
+                        if (v.y < minY) minY = v.y;
+                        if (v.y > maxY) maxY = v.y;
+                    });
+                }
+            });
+
+            dxfAnchor.x = (droneUTM.x !== null) ? droneUTM.x : (minX + maxX) / 2;
+            dxfAnchor.y = (droneUTM.y !== null) ? droneUTM.y : (minY + maxY) / 2;
+
+            document.getElementById('info-dxf-pos').innerText = `DXF Anchor: X=${dxfAnchor.x.toFixed(1)}, Y=${dxfAnchor.y.toFixed(1)}`;
+
+            dxf.entities.forEach(ent => {
+                if (ent.type === 'LINE' || ent.type === 'POLYLINE' || ent.type === 'LWPOLYLINE') {
+                    const points = [];
+                    ent.vertices.forEach(v => {
+                        let shiftX = v.x - dxfAnchor.x;
+                        let shiftY = v.y - dxfAnchor.y;
+                        points.push(new THREE.Vector3(shiftX, 0, -shiftY));
+                    });
+
+                    if (ent.shape || ent.closed) {
+                        points.push(points[0]);
+                    }
+
+                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                    
+                    let lineColor = 0x00ff00;
+                    if (ent.layer) {
+                        const hash = ent.layer.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
+                        lineColor = new THREE.Color().setHSL(Math.abs(hash) % 360 / 360, 1, 0.5);
+                    }
+
+                    const material = new THREE.LineBasicMaterial({ color: lineColor, linewidth: 2 });
+                    const line = new THREE.Line(geometry, material);
+                    dxfGroup.add(line);
+                }
+            });
+        }
+
+        // Kontrol Interaktif Slider
+        const sliderZ = document.getElementById('sliderZ');
+        const sliderRot = document.getElementById('sliderRot');
+        const sliderScale = document.getElementById('sliderScale');
+
+        function updateTransform() {
+            dxfGroup.position.y = parseFloat(sliderZ.value);
+            document.getElementById('valZ').innerText = parseFloat(sliderZ.value).toFixed(2) + "m";
+
+            const rot = parseFloat(sliderRot.value);
+            dxfGroup.rotation.y = THREE.MathUtils.degToRad(rot);
+            document.getElementById('valRot').innerText = (rot > 0 ? '+' : '') + rot.toFixed(1) + "°";
+
+            const scale = parseFloat(sliderScale.value);
+            dxfGroup.scale.set(scale, scale, scale);
+            document.getElementById('valScale').innerText = scale.toFixed(2) + "x";
+        }
+
+        sliderZ.addEventListener('input', updateTransform);
+        sliderRot.addEventListener('input', updateTransform);
+        sliderScale.addEventListener('input', updateTransform);
+
+        document.getElementById('btnReset').addEventListener('click', () => {
+            sliderZ.value = 0; sliderRot.value = 0; sliderScale.value = 1;
+            updateTransform();
+        });
+
+        // Loop Animasi & Kompas Real-time
+        const compassArrow = document.getElementById('compass-arrow');
+        const headingVal = document.getElementById('heading-val');
+        const pitchVal = document.getElementById('pitch-val');
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            
+            const azimuth = THREE.MathUtils.radToDeg(Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z));
+            const heading = (azimuth + 360) % 360;
+            
+            // Putar jarum kompas sesuai heading kamera
+            compassArrow.style.transform = `rotate(${heading}deg)`;
+            
+            // Update teks heading beserta keterangan mata angin (U, TL, T, TG, S, BD, B, BL)
+            const cardinal = getCardinalDirection(heading);
+            headingVal.innerText = `${Math.round(heading)}° (${cardinal})`;
+            
+            // Hitung nilai pitch kamera
+            const pitch = THREE.MathUtils.radToDeg(camera.rotation.x);
+            pitchVal.innerText = `Pitch: ${Math.round(pitch)}°`;
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
