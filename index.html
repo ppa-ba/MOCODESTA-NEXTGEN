@@ -923,10 +923,16 @@
             requestAnimationFrame(animate);
             controls.update();
             
-            const azimuth = THREE.MathUtils.radToDeg(Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z));
-            const heading = (azimuth + 360) % 360;
+            // Bearing kamera dihitung dari arah pandang (camera -> target),
+            // dengan konvensi peta: Utara=0°, Timur=90°, Selatan=180°, Barat=270°.
+            // Pada scene ini sumbu Three.js: +X = Timur dan -Z = Utara.
+            // Rumus lama memakai posisi camera terhadap target sehingga arah Timur/Barat
+            // menjadi terbalik setelah panorama + DXF dimuat.
+            const dirX = controls.target.x - camera.position.x;
+            const dirZ = controls.target.z - camera.position.z;
+            const heading = (THREE.MathUtils.radToDeg(Math.atan2(dirX, -dirZ)) + 360) % 360;
             
-            // Putar jarum kompas sesuai heading kamera
+            // Putar jarum kompas searah jarum jam dari Utara.
             compassArrow.style.transform = `rotate(${heading}deg)`;
             
             // Update teks heading beserta keterangan mata angin (U, TL, T, TG, S, BD, B, BL)
