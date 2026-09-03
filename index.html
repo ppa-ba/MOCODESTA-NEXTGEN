@@ -221,59 +221,672 @@
             reader.readAsText(file);
         });
 
-        // Auto-Georeferencing & Overlay Engine
-        function processAndRenderDXF(dxf) {
-            while(dxfGroup.children.length > 0){ 
-                dxfGroup.remove(dxfGroup.children[0]); 
+        // ============================================================
+        // DXF RENDER ENGINE
+        // - membaca warna entity (TrueColor / ACI / ByLayer)
+        // - membaca TEXT & MTEXT
+        // - LINE / POLYLINE / LWPOLYLINE
+        // - ARC / CIRCLE / ELLIPSE
+        // - memakai Z dari DXF bila tersedia
+        // - mendukung INSERT sederhana (block reference)
+        // ============================================================
+
+        const ACI_COLORS = {
+            1: 0xFF0000, 2: 0xFFFF00, 3: 0x00FF00, 4: 0x00FFFF,
+            5: 0x0000FF, 6: 0xFF00FF, 7: 0xFFFFFF, 8: 0x414141,
+            9: 0x808080, 10: 0xFF0000, 11: 0xFF7F7F, 12: 0xA50000,
+            13: 0xA55050, 14: 0xA50000, 15: 0xA55050, 16: 0x7F0000,
+            17: 0x7F3F3F, 18: 0xFF3F00, 19: 0xFF9F7F, 20: 0xA52A00,
+            21: 0xA5523F, 22: 0x7F1F00, 23: 0x7F4F3F, 30: 0xFF7F00,
+            31: 0xFFBF7F, 32: 0xA55200, 33: 0xA57A3F, 34: 0x7F3F00,
+            35: 0x7F5F3F, 40: 0xFFBF00, 41: 0xFFDF7F, 42: 0xA57A00,
+            43: 0xA5903F, 44: 0x7F5F00, 45: 0x7F6F3F, 50: 0xFFFF00,
+            51: 0xFFFF7F, 52: 0xA5A500, 53: 0xA5A53F, 54: 0x7F7F00,
+            55: 0x7F7F3F, 60: 0x7FFF00, 61: 0xBFFF7F, 62: 0x7FA500,
+            63: 0x90A53F, 64: 0x5F7F00, 65: 0x6F7F3F, 70: 0x00FF00,
+            71: 0x7FFF7F, 72: 0x00A500, 73: 0x3FA53F, 74: 0x007F00,
+            75: 0x3F7F3F, 80: 0x00FF7F, 81: 0x7FFFBF, 82: 0x00A57F,
+            83: 0x3FA57A, 84: 0x007F5F, 85: 0x3F7F6F, 90: 0x00FFFF,
+            91: 0x7FFFFF, 92: 0x00A5A5, 93: 0x3FA5A5, 94: 0x007F7F,
+            95: 0x3F7F7F, 100: 0x007FFF, 101: 0x7FBFFF, 102: 0x007FA5,
+            103: 0x3F7FA5, 104: 0x005F7F, 105: 0x3F6F7F, 110: 0x0000FF,
+            111: 0x7F7FFF, 112: 0x0000A5, 113: 0x3F3FA5, 114: 0x00007F,
+            115: 0x3F3F7F, 120: 0x7F00FF, 121: 0xBF7FFF, 122: 0x7F00A5,
+            123: 0x7F3FA5, 124: 0x3F007F, 125: 0x5F3F7F, 130: 0xFF00FF,
+            131: 0xFF7FFF, 132: 0xA500A5, 133: 0xA53FA5, 134: 0x7F007F,
+            135: 0x7F3F7F, 140: 0xFF007F, 141: 0xFF7FBF, 142: 0xA5007F,
+            143: 0xA53F7F, 144: 0x7F005F, 145: 0x7F3F6F, 150: 0xFF0000,
+            151: 0xFF7F7F, 152: 0xA50000, 153: 0xA53F3F, 154: 0x7F0000,
+            155: 0x7F3F3F, 256: 0xFFFFFF, 257: 0xFFFFFF
+        };
+
+        function getLayerInfo(dxf, layerName) {
+            const layers = dxf && dxf.tables && dxf.tables.layer && dxf.tables.layer.layers;
+            return (layers && layerName && layers[layerName]) ? layers[layerName] : null;
+        }
+
+        function colorFromDXF(ent, dxf) {
+            // dxf-parser 1.1.2 stores true color (420) directly in ent.color.
+            // ACI (62) is stored as an RGB integer by the parser.
+            const raw = ent && ent.color;
+
+            if (typeof raw === 'number' && Number.isFinite(raw)) {
+                // TrueColor: already 0xRRGGBB
+                if (raw >= 0 && raw <= 0xFFFFFF) return raw;
             }
 
+            const layer = getLayerInfo(dxf, ent && ent.layer);
+
+            // 256 = BYLAYER, 0 = BYBLOCK
+            if (!raw || ent.colorIndex === 256 || ent.colorIndex === 0) {
+                if (layer && typeof layer.color === 'number' && layer.color >= 0) {
+                    return layer.color & 0xFFFFFF;
+                }
+                if (layer && layer.colorIndex && ACI_COLORS[layer.colorIndex]) {
+                    return ACI_COLORS[layer.colorIndex];
+                }
+            }
+
+            const idx = Math.abs(Number(ent && ent.colorIndex));
+            if (ACI_COLORS[idx]) return ACI_COLORS[idx];
+
+            // Fallback berdasarkan layer, kemudian putih.
+            if (layer && typeof layer.color === 'number') return layer.color & 0xFFFFFF;
+            return 0xFFFFFF;
+        }
+
+        function cleanMText(value) {
+            if (value == null) return "";
+            return String(value)
+                .replace(/\\P/gi, "\n")
+                .replace(/\\~|\\ /g, " ")
+                .replace(/\\[A-Za-z][^;]*;/g, "")
+                .replace(/\{|\}/g, "")
+                .replace(/\^\s*J/g, "\n")
+                .trim();
+        }
+
+        // DXF -> Three.js coordinate conversion.
+        // IMPORTANT: DXF coordinates are stored in WCS/OCS depending on entity.
+        // We first resolve the entity point to WCS, then convert WCS(X,Y,Z) to
+        // Three.js(X,Z,-Y). This preserves XYZ instead of treating every
+        // vertex as a flat XY point.
+        function normalizeVec3(v, fallback) {
+            const x = Number(v && v.x), y = Number(v && v.y), z = Number(v && v.z);
+            const out = new THREE.Vector3(
+                Number.isFinite(x) ? x : fallback.x,
+                Number.isFinite(y) ? y : fallback.y,
+                Number.isFinite(z) ? z : fallback.z
+            );
+            if (out.lengthSq() < 1e-24) return fallback.clone();
+            return out.normalize();
+        }
+
+        function getEntityNormal(ent) {
+            const e = ent && (ent.extrusionDirection || ent.extrusion || ent.normal);
+            return normalizeVec3(e, new THREE.Vector3(0, 0, 1));
+        }
+
+        // Build the AutoCAD Arbitrary Axis System (OCS -> WCS).
+        function ocsBasis(normal) {
+            const n = normalizeVec3(normal, new THREE.Vector3(0, 0, 1));
+            let ax;
+            if (Math.abs(n.x) < 1 / 64 && Math.abs(n.y) < 1 / 64) {
+                ax = new THREE.Vector3(0, 1, 0).cross(n).normalize();
+            } else {
+                ax = new THREE.Vector3(0, 0, 1).cross(n).normalize();
+            }
+            const ay = n.clone().cross(ax).normalize();
+            return { xAxis: ax, yAxis: ay, zAxis: n };
+        }
+
+        function ocsToWcs(v, normal) {
+            const b = ocsBasis(normal);
+            const x = Number(v && v.x) || 0;
+            const y = Number(v && v.y) || 0;
+            const z = Number(v && v.z) || 0;
+            return b.xAxis.clone().multiplyScalar(x)
+                .add(b.yAxis.clone().multiplyScalar(y))
+                .add(b.zAxis.clone().multiplyScalar(z));
+        }
+
+        function pointToThree(v, anchorX, anchorY, zOverride = null) {
+            return new THREE.Vector3(
+                Number(v && v.x || 0) - anchorX,
+                Number(zOverride == null ? (v && v.z || 0) : zOverride),
+                -(Number(v && v.y || 0) - anchorY)
+            );
+        }
+
+        function entityPointToWcs(ent, v, options = {}) {
+            const type = String(ent && ent.type || '').toUpperCase();
+            let p = {
+                x: Number(v && v.x) || 0,
+                y: Number(v && v.y) || 0,
+                z: Number(v && v.z) || 0
+            };
+
+            // LWPOLYLINE vertex coordinates are OCS. Its elevation is the
+            // entity-wide Z when the vertex itself has no Z value.
+            if (type === 'LWPOLYLINE') {
+                const elevation = Number(ent.elevation);
+                if (Number.isFinite(elevation) && !Number.isFinite(Number(v && v.z))) {
+                    p.z = elevation;
+                }
+                const ex = ent.extrusionDirection || ent.extrusion;
+                if (ex) return ocsToWcs(p, ex);
+                // Default OCS normal is +Z, so this is already WCS.
+                return p;
+            }
+
+            // 2D POLYLINE vertex data is OCS; 3D POLYLINE is WCS.
+            if (type === 'POLYLINE' && !(Number(ent.flags || 0) & 8)) {
+                const elevation = Number(ent.elevation && (ent.elevation.z != null ? ent.elevation.z : ent.elevation));
+                if (Number.isFinite(elevation) && !Number.isFinite(Number(v && v.z))) p.z = elevation;
+                const ex = ent.extrusionDirection || ent.extrusion;
+                if (ex) return ocsToWcs(p, ex);
+                return p;
+            }
+
+            // ARC/CIRCLE/ELLIPSE are defined in an OCS when an extrusion
+            // direction is supplied.
+            if (options.applyOCS && (ent.extrusionDirection || ent.extrusion)) {
+                return ocsToWcs(p, ent.extrusionDirection || ent.extrusion);
+            }
+            return p;
+        }
+
+        function entityPointToThree(ent, v, anchorX, anchorY, options = {}) {
+            return pointToThree(entityPointToWcs(ent, v, options), anchorX, anchorY);
+        }
+
+        function addLine(points, color, parent = dxfGroup, closed = false) {
+            if (!points || points.length < 2) return null;
+
+            const pts = points.slice();
+            if (closed && pts.length > 2) {
+                const a = pts[0], b = pts[pts.length - 1];
+                if (a.distanceToSquared(b) > 1e-12) pts.push(a.clone());
+            }
+
+            const geometry = new THREE.BufferGeometry().setFromPoints(pts);
+            const material = new THREE.LineBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.98,
+                depthTest: false
+            });
+            const line = new THREE.Line(geometry, material);
+            line.renderOrder = 10;
+            parent.add(line);
+            return line;
+        }
+
+        function arcPoints(cx, cy, cz, radius, startDeg, endDeg, anchorX, anchorY, segments = 64) {
+            let a0 = THREE.MathUtils.degToRad(startDeg);
+            let a1 = THREE.MathUtils.degToRad(endDeg);
+            while (a1 < a0) a1 += Math.PI * 2;
+
+            const pts = [];
+            const count = Math.max(8, Math.ceil(Math.abs(a1 - a0) / (Math.PI / 24)));
+            for (let i = 0; i <= Math.min(segments * 4, count); i++) {
+                const t = i / Math.min(segments * 4, count);
+                const a = a0 + (a1 - a0) * t;
+                pts.push(new THREE.Vector3(
+                    cx + Math.cos(a) * radius - anchorX,
+                    cz,
+                    -(cy + Math.sin(a) * radius - anchorY)
+                ));
+            }
+            return pts;
+        }
+
+        function makeTextSprite(text, color, height, rotation = 0) {
+            text = cleanMText(text);
+            if (!text) return null;
+
+            const lines = text.split(/\r?\n/);
+            const fontPx = 96;
+            const linePx = 112;
+            const padding = 24;
+            const longest = lines.reduce((m, x) => Math.max(m, x.length), 1);
+            const widthPx = Math.max(128, longest * fontPx * 0.62 + padding * 2);
+            const heightPx = Math.max(128, lines.length * linePx + padding * 2);
+
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.ceil(widthPx);
+            canvas.height = Math.ceil(heightPx);
+
+            const ctx = canvas.getContext("2d");
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = `600 ${fontPx}px "Segoe UI", Arial, sans-serif`;
+            ctx.textBaseline = "top";
+            ctx.textAlign = "left";
+
+            const c = new THREE.Color(color);
+            ctx.fillStyle = `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`;
+
+            lines.forEach((line, i) => {
+                ctx.fillText(line, padding, padding + i * linePx);
+            });
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.needsUpdate = true;
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+
+            const material = new THREE.SpriteMaterial({
+                map: texture,
+                transparent: true,
+                depthTest: false,
+                depthWrite: false
+            });
+
+            const sprite = new THREE.Sprite(material);
+            const worldHeight = Math.max(Number(height) || 1, 0.01);
+            const aspect = canvas.width / canvas.height;
+            sprite.scale.set(worldHeight * aspect, worldHeight, 1);
+            sprite.rotation = THREE.MathUtils.degToRad(Number(rotation) || 0);
+            sprite.renderOrder = 100;
+
+            sprite.userData.dxfText = text;
+            sprite.userData.dxfHeight = worldHeight;
+            return sprite;
+        }
+
+        function renderTextEntity(ent, color, anchorX, anchorY, parent = dxfGroup) {
+            const p = ent.startPoint || ent.position || ent.insertionPoint;
+            if (!p) return;
+
+            const text = ent.text || ent.value || ent.string;
+            if (!text) return;
+
+            const sprite = makeTextSprite(
+                text,
+                color,
+                ent.textHeight || ent.height || 1,
+                ent.rotation || 0
+            );
+            if (!sprite) return;
+
+            const pos = pointToThree(p, anchorX, anchorY);
+            sprite.position.copy(pos);
+            parent.add(sprite);
+        }
+
+        // Build an AutoCAD-like polyline path. DXF LWPOLYLINE/POLYLINE vertices
+        // may contain a `bulge` value; treating every vertex pair as a straight
+        // segment makes curved corners look disconnected/misaligned.
+        function buildPolylinePoints(ent, vertices, closed, anchorX, anchorY) {
+            if (!Array.isArray(vertices) || vertices.length < 2) return [];
+
+            const pts = [];
+            const count = closed ? vertices.length : vertices.length - 1;
+
+            for (let i = 0; i < count; i++) {
+                const a = vertices[i];
+                const b = vertices[(i + 1) % vertices.length];
+                const aw = entityPointToWcs(ent, a);
+                const bw = entityPointToWcs(ent, b);
+                const a3 = pointToThree(aw, anchorX, anchorY);
+                const b3 = pointToThree(bw, anchorX, anchorY);
+
+                if (i === 0) pts.push(a3);
+
+                const bulge = Number(a.bulge);
+                if (!Number.isFinite(bulge) || Math.abs(bulge) < 1e-12) {
+                    pts.push(b3);
+                    continue;
+                }
+
+                // Bulge is defined in the polyline OCS. Build the arc in OCS,
+                // then transform every generated point to WCS. This avoids the
+                // old bug where XY was reconstructed in WCS and Z was mixed in.
+                const x1 = Number(a.x) || 0, y1 = Number(a.y) || 0;
+                const x2 = Number(b.x) || 0, y2 = Number(b.y) || 0;
+                const dx = x2 - x1, dy = y2 - y1;
+                const chord = Math.hypot(dx, dy);
+                if (chord < 1e-12) { pts.push(b3); continue; }
+
+                const theta = 4 * Math.atan(bulge);
+                const radius = (chord / 2) * (1 + bulge * bulge) / (2 * Math.abs(bulge));
+                const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
+                const nx = -dy / chord, ny = dx / chord;
+                const offset = (chord / 2) * (1 - bulge * bulge) / (2 * bulge);
+                const cx = midX + nx * offset;
+                const cy = midY + ny * offset;
+                const startAngle = Math.atan2(y1 - cy, x1 - cx);
+                const steps = Math.max(4, Math.ceil(Math.abs(theta) / (Math.PI / 36)));
+                const elevationA = Number(aw.z) || 0;
+                const elevationB = Number(bw.z) || elevationA;
+                const normal = ent.extrusionDirection || ent.extrusion || {x:0,y:0,z:1};
+
+                for (let j = 1; j <= steps; j++) {
+                    const t = j / steps;
+                    const ang = startAngle + theta * t;
+                    const ocsPoint = {
+                        x: cx + Math.cos(ang) * radius,
+                        y: cy + Math.sin(ang) * radius,
+                        z: elevationA + (elevationB - elevationA) * t
+                    };
+                    const w = ocsToWcs(ocsPoint, normal);
+                    pts.push(pointToThree(w, anchorX, anchorY));
+                }
+            }
+            return pts;
+        }
+
+        function getEntityVertices(ent) {
+            if (Array.isArray(ent.vertices)) return ent.vertices;
+            if (ent.startPoint && ent.endPoint) return [ent.startPoint, ent.endPoint];
+            return [];
+        }
+
+        function renderDXFEntity(ent, dxf, anchorX, anchorY, parent = dxfGroup, depth = 0) {
+            if (!ent || ent.visible === false) return;
+            if (depth > 8) return; // protect against malformed recursive blocks
+
+            const color = colorFromDXF(ent, dxf);
+            const type = String(ent.type || "").toUpperCase();
+
+            // LINE / POLYLINE / LWPOLYLINE
+            if (type === "LINE" || type === "POLYLINE" || type === "LWPOLYLINE") {
+                const vertices = getEntityVertices(ent);
+                if (vertices.length >= 2) {
+                    // AutoCAD's closed flag can be exposed by different parser
+                    // versions as closed, shape or bit 1 in flags.
+                    const closed = !!(ent.closed || ent.shape || ((Number(ent.flags) || 0) & 1));
+                    const pts = (type === "LINE")
+                        ? vertices.map(v => entityPointToThree(ent, v, anchorX, anchorY))
+                        : buildPolylinePoints(ent, vertices, closed, anchorX, anchorY);
+
+                    // buildPolylinePoints already includes the closing segment.
+                    addLine(pts, color, parent, false);
+                }
+                return;
+            }
+
+            // 3D POLYLINE can also expose vertices with z.
+            if (type === "3DPOLYLINE") {
+                const pts = getEntityVertices(ent).map(v => entityPointToThree(ent, v, anchorX, anchorY));
+                addLine(pts, color, parent, !!ent.closed);
+                return;
+            }
+
+            // ARC
+            if (type === "ARC") {
+                const c = ent.center || ent.startPoint;
+                const radius = Number(ent.radius || 0);
+                if (c && radius > 0) {
+                    addLine(
+                        arcPoints(
+                            Number(c.x || 0), Number(c.y || 0), Number(c.z || 0),
+                            radius,
+                            Number(ent.startAngle || 0),
+                            Number(ent.endAngle || 0),
+                            anchorX, anchorY
+                        ),
+                        color,
+                        parent
+                    );
+                }
+                return;
+            }
+
+            // CIRCLE
+            if (type === "CIRCLE") {
+                const c = ent.center;
+                const radius = Number(ent.radius || 0);
+                if (c && radius > 0) {
+                    addLine(
+                        arcPoints(
+                            Number(c.x || 0), Number(c.y || 0), Number(c.z || 0),
+                            radius, 0, 360, anchorX, anchorY, 96
+                        ),
+                        color,
+                        parent,
+                        true
+                    );
+                }
+                return;
+            }
+
+            // ELLIPSE - approximate using major axis and ratio.
+            if (type === "ELLIPSE") {
+                const c = ent.center;
+                const major = ent.majorAxisEndPoint || ent.majorAxis || ent.majorAxisVector;
+                if (c && major) {
+                    const mx = Number(major.x || 0);
+                    const my = Number(major.y || 0);
+                    const mz = Number(major.z || 0);
+                    const majorLen = Math.hypot(mx, my, mz);
+                    const ratio = Number(ent.axisRatio || ent.ratio || 1);
+                    if (majorLen > 0) {
+                        const pts = [];
+                        const start = Number(ent.startAngle || 0);
+                        const end = Number(ent.endAngle == null ? Math.PI * 2 : ent.endAngle);
+                        const isRadians = Math.abs(end) <= Math.PI * 2 + 0.01 && Math.abs(start) <= Math.PI * 2 + 0.01;
+                        const a0 = isRadians ? start : THREE.MathUtils.degToRad(start);
+                        const a1 = isRadians ? end : THREE.MathUtils.degToRad(end);
+                        const count = 96;
+                        for (let i = 0; i <= count; i++) {
+                            const t = i / count;
+                            const a = a0 + (a1 - a0) * t;
+                            const ux = mx / majorLen, uy = my / majorLen;
+                            const vx = -uy, vy = ux;
+                            const x = Number(c.x || 0) + mx * Math.cos(a) + vx * majorLen * ratio * Math.sin(a);
+                            const y = Number(c.y || 0) + my * Math.cos(a) + vy * majorLen * ratio * Math.sin(a);
+                            pts.push(new THREE.Vector3(x - anchorX, Number(c.z || 0), -(y - anchorY)));
+                        }
+                        addLine(pts, color, parent, Math.abs((a1 - a0) - Math.PI * 2) < 0.01);
+                    }
+                }
+                return;
+            }
+
+            // TEXT / MTEXT
+            if (type === "TEXT" || type === "MTEXT" || type === "ATTRIB" || type === "ATTDEF") {
+                renderTextEntity(ent, color, anchorX, anchorY, parent);
+                return;
+            }
+
+            // POINT - render as a small crosshair.
+            if (type === "POINT") {
+                const p = ent.position || ent.startPoint;
+                if (p) {
+                    const q = pointToThree(p, anchorX, anchorY);
+                    const s = 0.15;
+                    addLine([
+                        q.clone().add(new THREE.Vector3(-s, 0, 0)),
+                        q.clone().add(new THREE.Vector3(s, 0, 0))
+                    ], color, parent);
+                    addLine([
+                        q.clone().add(new THREE.Vector3(0, 0, -s)),
+                        q.clone().add(new THREE.Vector3(0, 0, s))
+                    ], color, parent);
+                }
+                return;
+            }
+
+            // INSERT - render referenced BLOCK entities.
+            if (type === "INSERT") {
+                const blockName = ent.name || ent.block || ent.blockName;
+                const block = dxf.blocks && blockName ? dxf.blocks[blockName] : null;
+                const ip = ent.position || ent.insertionPoint || ent.startPoint;
+                if (block && Array.isArray(block.entities) && ip) {
+                    const g = new THREE.Group();
+                    const ins = pointToThree(ip, anchorX, anchorY);
+                    g.position.copy(ins);
+                    g.rotation.y = THREE.MathUtils.degToRad(Number(ent.rotation || 0));
+                    const sx = Number(ent.xScale == null ? 1 : ent.xScale);
+                    const sy = Number(ent.yScale == null ? 1 : ent.yScale);
+                    const sz = Number(ent.zScale == null ? 1 : ent.zScale);
+                    g.scale.set(sx, sz, sy);
+                    parent.add(g);
+
+                    // Block coordinates are local, so use a zero anchor for block content.
+                    block.entities.forEach(child => {
+                        renderDXFEntity(child, dxf, 0, 0, g, depth + 1);
+                    });
+                }
+                return;
+            }
+
+            // SPLINE fallback: use fit points/control points if parser exposes them.
+            if (type === "SPLINE") {
+                const ptsRaw = ent.fitPoints || ent.controlPoints || ent.vertices || [];
+                if (ptsRaw.length >= 2) {
+                    addLine(ptsRaw.map(v => pointToThree(v, anchorX, anchorY)), color, parent);
+                }
+                return;
+            }
+
+            // Generic fallback for unsupported entities exposing vertices.
+            const fallback = getEntityVertices(ent);
+            if (fallback.length >= 2) {
+                addLine(fallback.map(v => pointToThree(v, anchorX, anchorY)), color, parent, !!ent.closed);
+            }
+        }
+
+        function collectDxfBounds(dxf) {
             let minX = Infinity, maxX = -Infinity;
             let minY = Infinity, maxY = -Infinity;
 
-            dxf.entities.forEach(ent => {
-                if (ent.vertices) {
-                    ent.vertices.forEach(v => {
-                        if (v.x < minX) minX = v.x;
-                        if (v.x > maxX) maxX = v.x;
-                        if (v.y < minY) minY = v.y;
-                        if (v.y > maxY) maxY = v.y;
-                    });
-                }
-            });
+            const inspect = (ent, depth = 0) => {
+                if (!ent || depth > 8) return;
 
-            dxfAnchor.x = (droneUTM.x !== null) ? droneUTM.x : (minX + maxX) / 2;
-            dxfAnchor.y = (droneUTM.y !== null) ? droneUTM.y : (minY + maxY) / 2;
+                const candidates = [];
+                if (Array.isArray(ent.vertices)) candidates.push(...ent.vertices);
+                if (ent.startPoint) candidates.push(ent.startPoint);
+                if (ent.endPoint) candidates.push(ent.endPoint);
+                if (ent.position) candidates.push(ent.position);
+                if (ent.insertionPoint) candidates.push(ent.insertionPoint);
+                if (ent.center) candidates.push(ent.center);
 
-            document.getElementById('info-dxf-pos').innerText = `DXF Anchor: X=${dxfAnchor.x.toFixed(1)}, Y=${dxfAnchor.y.toFixed(1)}`;
+                candidates.forEach(v => {
+                    if (!v) return;
+                    const x = Number(v.x), y = Number(v.y);
+                    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+                    minX = Math.min(minX, x);
+                    maxX = Math.max(maxX, x);
+                    minY = Math.min(minY, y);
+                    maxY = Math.max(maxY, y);
+                });
 
-            dxf.entities.forEach(ent => {
-                if (ent.type === 'LINE' || ent.type === 'POLYLINE' || ent.type === 'LWPOLYLINE') {
-                    const points = [];
-                    ent.vertices.forEach(v => {
-                        let shiftX = v.x - dxfAnchor.x;
-                        let shiftY = v.y - dxfAnchor.y;
-                        points.push(new THREE.Vector3(shiftX, 0, -shiftY));
-                    });
-
-                    if (ent.shape || ent.closed) {
-                        points.push(points[0]);
+                // Include INSERT insertion point.
+                if (String(ent.type).toUpperCase() === "INSERT") {
+                    const block = dxf.blocks && dxf.blocks[ent.name];
+                    if (block && Array.isArray(block.entities)) {
+                        block.entities.forEach(child => inspect(child, depth + 1));
                     }
-
-                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-                    
-                    let lineColor = 0x00ff00;
-                    if (ent.layer) {
-                        const hash = ent.layer.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
-                        lineColor = new THREE.Color().setHSL(Math.abs(hash) % 360 / 360, 1, 0.5);
-                    }
-
-                    const material = new THREE.LineBasicMaterial({ color: lineColor, linewidth: 2 });
-                    const line = new THREE.Line(geometry, material);
-                    dxfGroup.add(line);
                 }
-            });
+            };
+
+            (dxf.entities || []).forEach(e => inspect(e));
+            return { minX, maxX, minY, maxY };
         }
 
+        function buildDXFTopology(dxf, bounds) {
+            // CAD viewers do not render every LINE with an unrelated coordinate
+            // system.  Endpoints that are numerically equal (or differ only by
+            // tiny CAD export precision) are treated as the same topological
+            // vertex. This prevents visible micro-gaps between LINE/POLYLINEs.
+            const span = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 1);
+            const tolerance = Math.max(1e-7 * span, 1e-6);
+            const buckets = new Map();
+
+            function key(v) {
+                const x = Number(v.x || 0), y = Number(v.y || 0), z = Number(v.z || 0);
+                return `${Math.round(x / tolerance)},${Math.round(y / tolerance)},${Math.round(z / tolerance)}`;
+            }
+
+            function snap(v) {
+                if (!v || !Number.isFinite(Number(v.x)) || !Number.isFinite(Number(v.y))) return v;
+                const k = key(v);
+                let c = buckets.get(k);
+                if (!c) {
+                    c = { x: Number(v.x), y: Number(v.y), z: Number(v.z || 0) };
+                    buckets.set(k, c);
+                }
+                return c;
+            }
+
+            function visit(ent, depth = 0) {
+                if (!ent || depth > 12) return;
+                const type = String(ent.type || '').toUpperCase();
+                if (Array.isArray(ent.vertices) &&
+                    (type === 'LINE' || type === 'POLYLINE' || type === 'LWPOLYLINE' || type === '3DPOLYLINE')) {
+                    ent.vertices = ent.vertices.map(v => snap(v));
+                }
+                if (ent.startPoint) ent.startPoint = snap(ent.startPoint);
+                if (ent.endPoint) ent.endPoint = snap(ent.endPoint);
+                if (ent.position) ent.position = snap(ent.position);
+                if (ent.insertionPoint) ent.insertionPoint = snap(ent.insertionPoint);
+                if (ent.center) ent.center = snap(ent.center);
+                if (type === 'INSERT') {
+                    const block = dxf.blocks && dxf.blocks[ent.name];
+                    if (block && Array.isArray(block.entities)) block.entities.forEach(e => visit(e, depth + 1));
+                }
+            }
+            (dxf.entities || []).forEach(e => visit(e));
+            return { tolerance, vertexCount: buckets.size };
+        }
+
+        function processAndRenderDXF(dxf) {
+            while (dxfGroup.children.length > 0) {
+                const child = dxfGroup.children.pop();
+                child.traverse(obj => {
+                    if (obj.geometry) obj.geometry.dispose();
+                    if (obj.material) {
+                        if (obj.material.map) obj.material.map.dispose();
+                        obj.material.dispose();
+                    }
+                });
+            }
+
+            if (!dxf || !Array.isArray(dxf.entities)) {
+                alert('DXF tidak memiliki entity yang dapat dibaca.');
+                return;
+            }
+
+            const bounds = collectDxfBounds(dxf);
+            if (!Number.isFinite(bounds.minX) || !Number.isFinite(bounds.minY)) {
+                alert('DXF berhasil diparse, tetapi tidak ditemukan koordinat geometry.');
+                return;
+            }
+
+            dxfAnchor.x = (droneUTM.x !== null) ? droneUTM.x : (bounds.minX + bounds.maxX) / 2;
+            dxfAnchor.y = (droneUTM.y !== null) ? droneUTM.y : (bounds.minY + bounds.maxY) / 2;
+
+            // Do NOT mutate/snap source coordinates. CAD coordinates are authoritative;
+            // changing them here can create incorrect XYZ positions. We only collect
+            // connectivity diagnostics and render the original coordinates.
+
+            document.getElementById('info-dxf-pos').innerText =
+                `DXF Anchor: X=${dxfAnchor.x.toFixed(1)}, Y=${dxfAnchor.y.toFixed(1)}`;
+
+            const stats = {};
+            dxf.entities.forEach(ent => {
+                const type = String(ent.type || 'UNKNOWN').toUpperCase();
+                stats[type] = (stats[type] || 0) + 1;
+                renderDXFEntity(ent, dxf, dxfAnchor.x, dxfAnchor.y);
+            });
+
+            const statText = Object.entries(stats).map(([k, v]) => `${k}: ${v}`).join(' | ');
+            console.info('DXF loaded:', { entities: dxf.entities.length, bounds, anchor: dxfAnchor, types: stats });
+
+            document.getElementById('sync-text').innerText = `DXF LOADED • ${dxf.entities.length} ENTITIES`;
+            document.getElementById('sync-status').className = 'w-2 h-2 bg-green-500 rounded-full animate-pulse';
+
+            if (droneUTM.x === null) {
+                const span = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 1);
+                controls.target.set(0, 0, 0);
+                camera.position.set(0, Math.max(span * 0.8, 20), Math.max(span * 0.8, 20));
+                controls.update();
+            }
+            console.info('DXF entity summary:', statText);
+        }
+        
         // Kontrol Interaktif Slider
         const sliderZ = document.getElementById('sliderZ');
         const sliderRot = document.getElementById('sliderRot');
