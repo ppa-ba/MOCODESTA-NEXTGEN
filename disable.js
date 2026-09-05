@@ -1,4 +1,4 @@
-var message = "SILAHKAN MASUKAN USERNAME & PASSWORD UNTUK LOGIN KE APLIKASI MOCODESTA";    
+var message = "SILAHKAN MASUKAN USERNAME & PASSWORD UNTUK LOGIN KE APLIKASI MOCODESTA NEXT GENERATION";    
 function rtclickcheck(keyp){ if (navigator.appName == "Netscape" && keyp.which == 3){ alert(message); return false; }    
 if (navigator.appVersion.indexOf("MSIE") != -1 && event.button == 2) { alert(message); return false; } }    
 document.onmousedown = rtclickcheck;
