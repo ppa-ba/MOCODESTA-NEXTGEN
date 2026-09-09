@@ -14,6 +14,8 @@
         .ui-layer { position: absolute; z-index: 10; pointer-events: none; }
         .ui-interactive { pointer-events: auto; }
         .glass-panel { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .bg-select { background: rgba(15,23,42,.82); color: #fff; border: 1px solid rgba(255,255,255,.18); outline: none; }
+        .bg-select option { background: #0f172a; color: #fff; }
         input[type=range] { -webkit-appearance: none; background: transparent; width: 100%; }
         input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -6px; }
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #475569; border-radius: 2px; }
@@ -47,6 +49,28 @@
                 <input type="file" id="uploadDXF" accept=".dxf" class="hidden">
             </label>
         </div>
+    </div>
+
+    <div class="ui-layer ui-interactive top-20 right-32 glass-panel px-3 py-2 rounded-lg text-xs shadow-xl">
+        <label for="background-select" class="text-gray-300 mr-2"><i class="fas fa-palette"></i> Background</label>
+        <select id="background-select" class="bg-select rounded px-2 py-1 text-xs">
+            <option value="panorama">Foto 360</option>
+            <option value="dark">Hitam</option>
+            <option value="white">Putih</option>
+            <option value="gray">Abu-abu</option>
+            <option value="blue">Biru Gelap</option>
+        </select>
+    </div>
+
+    <div id="dxf-coordinate-panel" class="ui-layer ui-interactive top-44 left-4 glass-panel p-3 rounded-lg text-xs space-y-1 hidden min-w-[245px] shadow-xl">
+        <div class="text-green-400 font-semibold mb-1"><i class="fas fa-crosshairs"></i> Informasi DXF</div>
+        <div id="dxf-selected-type" class="text-gray-300">Entity: -</div>
+        <div id="dxf-selected-layer" class="text-gray-300">Layer: -</div>
+        <div id="dxf-selected-x" class="text-gray-200 font-mono">X (Easting): -</div>
+        <div id="dxf-selected-y" class="text-gray-200 font-mono">Y (Northing): -</div>
+        <div id="dxf-selected-z" class="text-gray-200 font-mono">Z (Elevation): -</div>
+        <div id="dxf-selected-extra" class="text-gray-400 font-mono text-[10px]"></div>
+        <button id="dxf-info-close" class="mt-2 px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">Tutup</button>
     </div>
 
     <div class="ui-layer ui-interactive top-20 left-4 space-y-4">
@@ -112,6 +136,7 @@
         // Setup Three.js Scene
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
         
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
         camera.position.set(0, 0, 0.1);
@@ -133,10 +158,35 @@
         const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0x1e293b, wireframe: true }); 
         const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
         scene.add(sphere);
+        let panoramaLoaded = false;
+
+        const backgroundSelect = document.getElementById('background-select');
+        const backgroundColors = {
+            dark: 0x050505,
+            white: 0xf4f4f4,
+            gray: 0x808080,
+            blue: 0x1a1a2e
+        };
+        function applyBackgroundMode(mode) {
+            if (mode === 'panorama' && panoramaLoaded) {
+                sphere.visible = true;
+                scene.background = new THREE.Color(0x1a1a2e);
+            } else {
+                sphere.visible = false;
+                scene.background = new THREE.Color(backgroundColors[mode] ?? backgroundColors.blue);
+            }
+        }
+        backgroundSelect.addEventListener('change', () => applyBackgroundMode(backgroundSelect.value));
 
         // DXF Group Container
         const dxfGroup = new THREE.Group();
         scene.add(dxfGroup);
+
+        // Visual feedback untuk entitas DXF yang sedang dipilih.
+        const dxfSelectionGroup = new THREE.Group();
+        dxfSelectionGroup.name = 'DXF_SELECTION_HIGHLIGHT';
+        dxfSelectionGroup.renderOrder = 1000;
+        scene.add(dxfSelectionGroup);
 
         let droneUTM = { x: null, y: null };
         let rawDxfData = null;
@@ -171,6 +221,8 @@
                 textureLoader.load(e.target.result, function(texture) {
                     sphere.material.dispose();
                     sphere.material = new THREE.MeshBasicMaterial({ map: texture });
+                    panoramaLoaded = true;
+                    applyBackgroundMode(backgroundSelect.value);
                 });
             };
             reader.readAsDataURL(file);
@@ -401,10 +453,11 @@
             return pointToThree(entityPointToWcs(ent, v, options), anchorX, anchorY);
         }
 
-        function addLine(points, color, parent = dxfGroup, closed = false) {
+        function addLine(points, color, parent = dxfGroup, closed = false, metadata = null) {
             if (!points || points.length < 2) return null;
 
             const pts = points.slice();
+            const sourcePoints = metadata && metadata.sourcePoints ? metadata.sourcePoints.map(p => ({ x:Number(p.x||0), y:Number(p.y||0), z:Number(p.z||0) })) : null;
             if (closed && pts.length > 2) {
                 const a = pts[0], b = pts[pts.length - 1];
                 if (a.distanceToSquared(b) > 1e-12) pts.push(a.clone());
@@ -419,6 +472,15 @@
             });
             const line = new THREE.Line(geometry, material);
             line.renderOrder = 10;
+            line.userData.dxfSelectable = true;
+            if (metadata) {
+                line.userData.dxfEntity = metadata.entity || null;
+                line.userData.dxfType = metadata.type || (metadata.entity && metadata.entity.type) || 'ENTITY';
+                line.userData.dxfLayer = metadata.layer || (metadata.entity && metadata.entity.layer) || '-';
+                line.userData.dxfSourcePoints = sourcePoints;
+                line.userData.dxfAnchorX = Number(metadata.anchorX || 0);
+                line.userData.dxfAnchorY = Number(metadata.anchorY || 0);
+            }
             parent.add(line);
             return line;
         }
@@ -492,6 +554,7 @@
 
             sprite.userData.dxfText = text;
             sprite.userData.dxfHeight = worldHeight;
+            sprite.userData.dxfSelectable = true;
             return sprite;
         }
 
@@ -512,6 +575,11 @@
 
             const pos = pointToThree(p, anchorX, anchorY);
             sprite.position.copy(pos);
+            sprite.userData.dxfEntity = ent;
+            sprite.userData.dxfType = String(ent.type || 'TEXT').toUpperCase();
+            sprite.userData.dxfLayer = ent.layer || '-';
+            sprite.userData.dxfAnchorX = Number(anchorX || 0);
+            sprite.userData.dxfAnchorY = Number(anchorY || 0);
             parent.add(sprite);
         }
 
@@ -602,7 +670,12 @@
                         : buildPolylinePoints(ent, vertices, closed, anchorX, anchorY);
 
                     // buildPolylinePoints already includes the closing segment.
-                    addLine(pts, color, parent, false);
+                    // Store the DXF anchor on the rendered object so a click can
+                    // convert the picked Three.js point back to WCS XYZ exactly.
+                    addLine(pts, color, parent, false, {
+                        entity: ent, type: type, layer: ent.layer,
+                        anchorX: anchorX, anchorY: anchorY
+                    });
                 }
                 return;
             }
@@ -610,7 +683,9 @@
             // 3D POLYLINE can also expose vertices with z.
             if (type === "3DPOLYLINE") {
                 const pts = getEntityVertices(ent).map(v => entityPointToThree(ent, v, anchorX, anchorY));
-                addLine(pts, color, parent, !!ent.closed);
+                addLine(pts, color, parent, !!ent.closed, {
+                    entity: ent, type: type, layer: ent.layer, anchorX: anchorX, anchorY: anchorY
+                });
                 return;
             }
 
@@ -697,14 +772,15 @@
                 if (p) {
                     const q = pointToThree(p, anchorX, anchorY);
                     const s = 0.15;
+                    const pointMeta = { entity: ent, type: type, layer: ent.layer, anchorX: anchorX, anchorY: anchorY };
                     addLine([
                         q.clone().add(new THREE.Vector3(-s, 0, 0)),
                         q.clone().add(new THREE.Vector3(s, 0, 0))
-                    ], color, parent);
+                    ], color, parent, false, pointMeta);
                     addLine([
                         q.clone().add(new THREE.Vector3(0, 0, -s)),
                         q.clone().add(new THREE.Vector3(0, 0, s))
-                    ], color, parent);
+                    ], color, parent, false, pointMeta);
                 }
                 return;
             }
@@ -915,6 +991,288 @@
             updateTransform();
         });
 
+        // ============================================================
+        // DXF PICK / COORDINATE INSPECTOR
+        // Klik LINE / POLYLINE / POINT untuk membaca koordinat sumber DXF.
+        // Koordinat yang ditampilkan adalah WCS DXF: X=Easting, Y=Northing,
+        // Z=Elevation. Transform visual (rotasi/skala/Z overlay) tidak
+        // mengubah angka koordinat sumber.
+        // ============================================================
+        const dxfRaycaster = new THREE.Raycaster();
+        const dxfPointer = new THREE.Vector2();
+        dxfRaycaster.params.Line.threshold = 0.75;
+        dxfRaycaster.params.Points.threshold = 1.0;
+
+        const dxfPanel = document.getElementById('dxf-coordinate-panel');
+        document.getElementById('dxf-info-close').addEventListener('click', () => {
+            dxfPanel.classList.add('hidden');
+            clearDXFSelection();
+        });
+
+        function formatCoord(v) {
+            return Number(v).toFixed(3);
+        }
+
+        function localThreeToWcs(p, anchorX, anchorY) {
+            return {
+                x: Number(p.x) + Number(anchorX || 0),
+                y: -Number(p.z) + Number(anchorY || 0),
+                z: Number(p.y)
+            };
+        }
+
+        function closestPointOnPolyline(localPoint, positions) {
+            let best = null;
+            let bestDist = Infinity;
+            for (let i = 0; i < positions.length - 1; i++) {
+                const a = positions[i], b = positions[i + 1];
+                const ab = b.clone().sub(a);
+                const len2 = ab.lengthSq();
+                let t = len2 > 1e-20 ? localPoint.clone().sub(a).dot(ab) / len2 : 0;
+                t = Math.max(0, Math.min(1, t));
+                const q = a.clone().add(ab.multiplyScalar(t));
+                const d2 = q.distanceToSquared(localPoint);
+                if (d2 < bestDist) {
+                    bestDist = d2;
+                    best = q;
+                }
+            }
+            return best;
+        }
+
+        function getPickedDXFCoordinate(object, intersection) {
+            // Bring picked world point into the DXF group's local coordinate
+            // system. This automatically compensates for slider rotation,
+            // scale and Z overlay.
+            const worldPoint = intersection.point.clone();
+            const dxfLocal = dxfGroup.worldToLocal(worldPoint.clone());
+
+            // Find the closest rendered segment in the clicked object.
+            const geom = object.geometry;
+            if (geom && geom.attributes && geom.attributes.position) {
+                const arr = geom.attributes.position.array;
+                const positions = [];
+                for (let i = 0; i < arr.length; i += 3) {
+                    positions.push(new THREE.Vector3(arr[i], arr[i + 1], arr[i + 2]));
+                }
+                if (positions.length >= 2) {
+                    const q = closestPointOnPolyline(dxfLocal, positions) || dxfLocal;
+                    return localThreeToWcs(q, object.userData.dxfAnchorX, object.userData.dxfAnchorY);
+                }
+            }
+
+            return localThreeToWcs(dxfLocal, object.userData.dxfAnchorX, object.userData.dxfAnchorY);
+        }
+
+        function clearDXFSelection() {
+            while (dxfSelectionGroup.children.length) {
+                const child = dxfSelectionGroup.children.pop();
+                if (child.geometry && child.geometry.dispose && child.userData && child.userData.ownsGeometry) child.geometry.dispose();
+                if (child.material) {
+                    if (child.material.map && child.userData && child.userData.ownsTexture) child.material.map.dispose();
+                    child.material.dispose();
+                }
+            }
+        }
+
+        function highlightDXFEntity(object, intersection) {
+            clearDXFSelection();
+            const entity = object.userData && object.userData.dxfEntity;
+            if (!entity) return;
+
+            // Satu entity bisa menghasilkan beberapa object (POINT crosshair,
+            // atau entity yang dirender sebagai beberapa bagian). Highlight semua.
+            const selectedObjects = [];
+            dxfGroup.traverse(obj => {
+                if (obj.userData && obj.userData.dxfSelectable && obj.userData.dxfEntity === entity) {
+                    selectedObjects.push(obj);
+                }
+            });
+
+            selectedObjects.forEach(src => {
+                if (src.isLine) {
+                    const mat = new THREE.LineBasicMaterial({
+                        color: 0xffff00,
+                        transparent: true,
+                        opacity: 1,
+                        depthTest: false,
+                        linewidth: 6
+                    });
+                    const glow = new THREE.Line(src.geometry, mat);
+                    glow.position.copy(src.position);
+                    glow.rotation.copy(src.rotation);
+                    glow.scale.copy(src.scale);
+                    glow.renderOrder = 1001;
+                    glow.userData.isDXFHighlight = true;
+                    dxfSelectionGroup.add(glow);
+                } else if (src.isSprite) {
+                    const mat = src.material.clone();
+                    mat.color = new THREE.Color(0xffff00);
+                    mat.opacity = 1;
+                    mat.depthTest = false;
+                    const glow = new THREE.Sprite(mat);
+                    glow.position.copy(src.position);
+                    glow.rotation = src.rotation;
+                    glow.scale.copy(src.scale).multiplyScalar(1.10);
+                    glow.renderOrder = 1002;
+                    glow.userData.ownsTexture = false;
+                    dxfSelectionGroup.add(glow);
+                }
+            });
+
+            // Marker jelas pada titik yang benar-benar diklik.
+            if (intersection && intersection.point) {
+                const marker = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.22, 16, 12),
+                    new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.95, depthTest: false })
+                );
+                marker.position.copy(intersection.point);
+                marker.renderOrder = 1003;
+                marker.userData.ownsGeometry = true;
+                dxfSelectionGroup.add(marker);
+            }
+        }
+
+        function showDXFCoordinate(object, intersection) {
+            const entity = object.userData.dxfEntity || {};
+            let coord;
+            const entityType = String(object.userData.dxfType || entity.type || '').toUpperCase();
+            // POINT harus mengembalikan koordinat entity asli, bukan titik pada
+            // salah satu lengan crosshair visual.
+            if (entityType === 'POINT') {
+                const p = entity.position || entity.startPoint;
+                const w = p ? entityPointToWcs(entity, p) : null;
+                coord = w || getPickedDXFCoordinate(object, intersection);
+            } else {
+                coord = getPickedDXFCoordinate(object, intersection);
+            }
+            const type = object.userData.dxfType || entity.type || 'ENTITY';
+            const layer = object.userData.dxfLayer || entity.layer || '-';
+
+            document.getElementById('dxf-selected-type').innerText = `Entity: ${type}`;
+            document.getElementById('dxf-selected-layer').innerText = `Layer: ${layer}`;
+            document.getElementById('dxf-selected-x').innerText = `X (Easting): ${formatCoord(coord.x)}`;
+            document.getElementById('dxf-selected-y').innerText = `Y (Northing): ${formatCoord(coord.y)}`;
+            document.getElementById('dxf-selected-z').innerText = `Z (Elevation): ${formatCoord(coord.z)} m`;
+            document.getElementById('dxf-selected-extra').innerText =
+                `Klik posisi • koordinat WCS DXF • anchor ${formatCoord(object.userData.dxfAnchorX)} / ${formatCoord(object.userData.dxfAnchorY)}`;
+            dxfPanel.classList.remove('hidden');
+        }
+
+        // Picking CAD dibuat lebih mudah tanpa mengganggu OrbitControls.
+        // Klik = pilih, drag/orbit = tidak memilih.
+        let dxfPickDown = null;
+        const EASY_PICK_LINE_PX = 55;
+        const EASY_PICK_POINT_PX = 75;
+        const EASY_PICK_TEXT_PX = 85;
+
+        function screenDistanceToSegment(px, py, ax, ay, bx, by) {
+            const vx = bx - ax, vy = by - ay;
+            const wx = px - ax, wy = py - ay;
+            const len2 = vx * vx + vy * vy;
+            let t = len2 ? (wx * vx + wy * vy) / len2 : 0;
+            t = Math.max(0, Math.min(1, t));
+            const cx = ax + t * vx, cy = ay + t * vy;
+            const dx = px - cx, dy = py - cy;
+            return { distance: Math.hypot(dx, dy), t, x: cx, y: cy };
+        }
+
+        function worldToClient(v) {
+            const p = v.clone().project(camera);
+            const rect = renderer.domElement.getBoundingClientRect();
+            return {
+                x: rect.left + (p.x + 1) * 0.5 * rect.width,
+                y: rect.top + (1 - p.y) * 0.5 * rect.height,
+                z: p.z
+            };
+        }
+
+        function easyScreenPick(clientX, clientY) {
+            let best = null;
+            const mouse = { x: clientX, y: clientY };
+
+            dxfGroup.traverse(obj => {
+                if (!obj.userData || !obj.userData.dxfSelectable) return;
+                if (obj.visible === false) return;
+
+                const type = String(obj.userData.dxfType || '').toUpperCase();
+                const pts = obj.geometry && obj.geometry.attributes && obj.geometry.attributes.position;
+
+                if (pts && pts.count >= 2 && (obj.isLine || obj.isLineSegments)) {
+                    const step = obj.isLineSegments ? 2 : 1;
+                    const last = obj.isLineSegments ? pts.count - 1 : pts.count - 1;
+                    for (let i = 0; i < last; i += step) {
+                        const j = obj.isLineSegments ? i + 1 : i + 1;
+                        if (j >= pts.count) break;
+                        const a = new THREE.Vector3().fromBufferAttribute(pts, i).applyMatrix4(obj.matrixWorld);
+                        const b = new THREE.Vector3().fromBufferAttribute(pts, j).applyMatrix4(obj.matrixWorld);
+                        const sa = worldToClient(a), sb = worldToClient(b);
+                        if (sa.z < -1 || sa.z > 1 || sb.z < -1 || sb.z > 1) continue;
+                        const hit = screenDistanceToSegment(mouse.x, mouse.y, sa.x, sa.y, sb.x, sb.y);
+                        if (hit.distance <= EASY_PICK_LINE_PX && (!best || hit.distance < best.distance)) {
+                            const world = a.clone().lerp(b, hit.t);
+                            best = { object: obj, point: world, distance: hit.distance };
+                        }
+                    }
+                } else {
+                    const pos = obj.position ? obj.getWorldPosition(new THREE.Vector3()) : null;
+                    if (!pos) return;
+                    const sp = worldToClient(pos);
+                    if (sp.z < -1 || sp.z > 1) return;
+                    const d = Math.hypot(mouse.x - sp.x, mouse.y - sp.y);
+                    const tol = type.includes('TEXT') || type.includes('MTEXT') || type.includes('ATTRIB') || type.includes('ATTDEF')
+                        ? EASY_PICK_TEXT_PX : EASY_PICK_POINT_PX;
+                    if (d <= tol && (!best || d < best.distance)) {
+                        best = { object: obj, point: pos, distance: d };
+                    }
+                }
+            });
+            return best;
+        }
+
+        renderer.domElement.addEventListener('pointerdown', function(event) {
+            dxfPickDown = { x: event.clientX, y: event.clientY };
+        }, false);
+
+        renderer.domElement.addEventListener('click', function(event) {
+            if (dxfPickDown) {
+                const moved = Math.hypot(event.clientX - dxfPickDown.x, event.clientY - dxfPickDown.y);
+                if (moved > 7) { dxfPickDown = null; return; }
+            }
+            dxfPickDown = null;
+
+            const rect = renderer.domElement.getBoundingClientRect();
+            dxfPointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            dxfPointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            dxfRaycaster.setFromCamera(dxfPointer, camera);
+
+            const candidates = [];
+            dxfGroup.traverse(obj => {
+                if (obj.userData && obj.userData.dxfSelectable) candidates.push(obj);
+            });
+            if (!candidates.length) return;
+
+            // Utamakan hit screen-space yang lebih mudah seperti CAD.
+            const easyHit = easyScreenPick(event.clientX, event.clientY);
+            if (easyHit) {
+                const synthetic = { object: easyHit.object, point: easyHit.point, distance: easyHit.distance };
+                highlightDXFEntity(easyHit.object, synthetic);
+                showDXFCoordinate(easyHit.object, synthetic);
+                return;
+            }
+
+            // Fallback raycaster untuk entity yang sulit diproyeksikan.
+            const hits = dxfRaycaster.intersectObjects(candidates, true);
+            if (hits.length) {
+                const hit = hits[0];
+                let obj = hit.object;
+                while (obj && !obj.userData.dxfSelectable) obj = obj.parent;
+                if (obj) {
+                    highlightDXFEntity(obj, hit);
+                    showDXFCoordinate(obj, hit);
+                }
+            }
+        }, false);
         // Loop Animasi & Kompas Real-time
         const compassArrow = document.getElementById('compass-arrow');
         const headingVal = document.getElementById('heading-val');
