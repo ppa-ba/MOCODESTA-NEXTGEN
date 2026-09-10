@@ -41,7 +41,7 @@
 
         <div class="flex space-x-3 mr-2 text-sm">
             <label class="cursor-pointer px-4 py-2 bg-gray-800 rounded hover:bg-gray-700 transition flex items-center space-x-2">
-                <i class="fas fa-camera"></i> <span>Foto 360 (UTM)</span>
+                <i class="fas fa-camera"></i> <span>Foto 360 (METADATA)</span>
                 <input type="file" id="upload360" accept="image/*" class="hidden">
             </label>
             <label class="cursor-pointer px-4 py-2 bg-gray-800 border border-blue-500 rounded hover:bg-gray-700 transition flex items-center space-x-2">
@@ -60,6 +60,38 @@
             <option value="gray">Abu-abu</option>
             <option value="blue">Biru Gelap</option>
         </select>
+    </div>
+
+    <div id="panorama-calibration" class="ui-layer ui-interactive top-60 right-6 glass-panel p-3 rounded-lg text-xs space-y-2 shadow-xl w-[220px]">
+        <div class="text-yellow-400 font-semibold"><i class="fas fa-compass"></i> Kalibrasi Foto 360</div>
+        <div class="text-gray-400 leading-relaxed">Cara mudah: arahkan pandangan ke objek yang cocok dengan DXF, lalu gunakan tombol arah di bawah untuk menyamakan foto.</div>
+        <div class="flex items-center justify-between gap-2">
+            <span class="text-gray-400">Arah kamera</span>
+            <span id="cal-current-heading" class="font-mono text-blue-400">0.0°</span>
+        </div>
+        <div class="grid grid-cols-4 gap-1">
+            <button data-cal-cardinal="0" class="cal-cardinal px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">U</button>
+            <button data-cal-cardinal="90" class="cal-cardinal px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">T</button>
+            <button data-cal-cardinal="180" class="cal-cardinal px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">S</button>
+            <button data-cal-cardinal="270" class="cal-cardinal px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">B</button>
+        </div>
+        <div class="text-[10px] text-gray-500">Klik U/T/S/B jika objek yang sedang dilihat berada tepat di arah tersebut.</div>
+        <div class="flex items-center gap-1">
+            <button id="cal-nudge-minus15" class="flex-1 px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">−15°</button>
+            <button id="cal-nudge-minus1" class="flex-1 px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">−1°</button>
+            <button id="cal-nudge-plus1" class="flex-1 px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">+1°</button>
+            <button id="cal-nudge-plus15" class="flex-1 px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">+15°</button>
+        </div>
+        <div class="flex items-center gap-2">
+            <label for="cal-known-heading" class="text-gray-400 whitespace-nowrap">Azimuth</label>
+            <input id="cal-known-heading" type="number" min="0" max="360" step="0.1" value="0" class="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white font-mono">
+            <button id="calibrate-panorama" class="px-2 py-1.5 bg-yellow-600 hover:bg-yellow-500 text-black font-semibold rounded whitespace-nowrap">Set</button>
+        </div>
+        <div class="flex items-center gap-1">
+            <button id="cal-save-view" class="flex-1 px-2 py-1 bg-blue-700 hover:bg-blue-600 rounded">Simpan posisi ini</button>
+            <button id="reset-panorama-calibration" class="flex-1 px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-200">Reset</button>
+        </div>
+        <div id="cal-status" class="text-[10px] text-gray-500">Mode: metadata/default</div>
     </div>
 
     <div id="dxf-coordinate-panel" class="ui-layer ui-interactive top-44 left-4 glass-panel p-3 rounded-lg text-xs space-y-1 hidden min-w-[245px] shadow-xl">
@@ -159,6 +191,110 @@
         const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
         scene.add(sphere);
         let panoramaLoaded = false;
+        // Heading foto 360 relatif terhadap dunia/UTM. Jika metadata heading tersedia
+        // (GPano PoseHeadingDegrees / GPSImgDirection), panorama otomatis disejajarkan
+        // dengan arah Utara dunia. DXF tidak diputar dan tetap menjadi referensi utama.
+        let panoramaHeadingDeg = 0;
+        let panoramaHeadingSource = "default";
+        let panoramaCalibrationActive = false;
+        let panoramaMetadataHeadingDeg = 0;
+        let panoramaMetadataHeadingSource = "default";
+
+        function normalizeHeading(deg) {
+            let v = Number(deg);
+            if (!Number.isFinite(v)) return 0;
+            v %= 360;
+            if (v < 0) v += 360;
+            return v;
+        }
+
+        function getXmpHeadingFromArrayBuffer(buffer) {
+            try {
+                const bytes = new Uint8Array(buffer);
+                const text = new TextDecoder('latin1').decode(bytes);
+                const patterns = [
+                    /PoseHeadingDegrees\s*=\s*["']?([0-9.+-]+)["']?/i,
+                    /PoseHeading\s*=\s*["']?([0-9.+-]+)["']?/i,
+                    /FlightYawDegree\s*=\s*["']?([0-9.+-]+)["']?/i,
+                    /GimbalYawDegree\s*=\s*["']?([0-9.+-]+)["']?/i,
+                    /CameraYaw\s*=\s*["']?([0-9.+-]+)["']?/i
+                ];
+                for (const re of patterns) {
+                    const m = text.match(re);
+                    if (m) {
+                        const value = Number(m[1]);
+                        if (Number.isFinite(value)) return { value: normalizeHeading(value), source: re.source.split('\\s')[0] };
+                    }
+                }
+            } catch (err) {
+                console.warn('Gagal membaca XMP heading:', err);
+            }
+            return null;
+        }
+
+        function applyPanoramaHeading() {
+            // Pusat panorama (tengah foto) dipetakan ke azimuth panoramaHeadingDeg.
+            // DXF tidak diputar; hanya panorama yang diselaraskan terhadap dunia UTM.
+            sphere.rotation.y = THREE.MathUtils.degToRad(normalizeHeading(panoramaHeadingDeg));
+            console.info(`Panorama heading: ${panoramaHeadingDeg.toFixed(2)}° (${panoramaHeadingSource})`);
+        }
+
+        const calCurrentHeading = document.getElementById('cal-current-heading');
+        const calKnownHeading = document.getElementById('cal-known-heading');
+        const calStatus = document.getElementById('cal-status');
+
+        function getCameraWorldHeading() {
+            const dx = controls.target.x - camera.position.x;
+            const dz = controls.target.z - camera.position.z;
+            return (THREE.MathUtils.radToDeg(Math.atan2(dx, -dz)) + 360) % 360;
+        }
+
+        function applyCalibrationDelta(delta, label='manual') {
+            panoramaHeadingDeg = normalizeHeading(panoramaHeadingDeg + Number(delta));
+            panoramaHeadingSource = 'manual calibration';
+            panoramaCalibrationActive = true;
+            applyPanoramaHeading();
+            calStatus.textContent = `Kalibrasi aktif • ${label} • panorama ${panoramaHeadingDeg.toFixed(1)}°`;
+        }
+
+        document.querySelectorAll('.cal-cardinal').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const known = Number(this.dataset.calCardinal);
+                const current = getCameraWorldHeading();
+                const delta = known - current;
+                applyCalibrationDelta(delta, `arah ${this.textContent}`);
+            });
+        });
+
+        document.getElementById('cal-nudge-minus15').addEventListener('click', () => applyCalibrationDelta(-15, '−15°'));
+        document.getElementById('cal-nudge-minus1').addEventListener('click', () => applyCalibrationDelta(-1, '−1°'));
+        document.getElementById('cal-nudge-plus1').addEventListener('click', () => applyCalibrationDelta(1, '+1°'));
+        document.getElementById('cal-nudge-plus15').addEventListener('click', () => applyCalibrationDelta(15, '+15°'));
+
+        document.getElementById('calibrate-panorama').addEventListener('click', function() {
+            const known = Number(calKnownHeading.value);
+            if (!Number.isFinite(known)) {
+                alert('Masukkan azimuth yang valid (0–360°).');
+                return;
+            }
+            const current = getCameraWorldHeading();
+            const delta = known - current;
+            applyCalibrationDelta(delta, `azimuth ${normalizeHeading(known).toFixed(1)}°`);
+        });
+
+        document.getElementById('cal-save-view').addEventListener('click', function() {
+            panoramaCalibrationActive = true;
+            panoramaHeadingSource = 'saved manual calibration';
+            calStatus.textContent = `Posisi panorama disimpan • ${panoramaHeadingDeg.toFixed(1)}°`;
+        });
+
+        document.getElementById('reset-panorama-calibration').addEventListener('click', function() {
+            panoramaCalibrationActive = false;
+            panoramaHeadingDeg = panoramaMetadataHeadingDeg;
+            panoramaHeadingSource = panoramaMetadataHeadingSource;
+            applyPanoramaHeading();
+            calStatus.textContent = `Mode: ${panoramaHeadingSource}`;
+        });
 
         const backgroundSelect = document.getElementById('background-select');
         const backgroundColors = {
@@ -218,20 +354,56 @@
 
             const reader = new FileReader();
             reader.onload = function(e) {
-                textureLoader.load(e.target.result, function(texture) {
+                const dataUrl = e.target.result;
+                textureLoader.load(dataUrl, function(texture) {
                     sphere.material.dispose();
                     sphere.material = new THREE.MeshBasicMaterial({ map: texture });
                     panoramaLoaded = true;
+                    applyPanoramaHeading();
                     applyBackgroundMode(backgroundSelect.value);
                 });
             };
             reader.readAsDataURL(file);
+
+            // Baca heading dari XMP/GPano. Ini penting karena banyak kamera/drone 360
+            // menyimpan arah kamera di PoseHeadingDegrees, bukan di EXIF standar.
+            const headingReader = new FileReader();
+            headingReader.onload = function(e) {
+                const xmp = getXmpHeadingFromArrayBuffer(e.target.result);
+                if (xmp) {
+                    panoramaMetadataHeadingDeg = xmp.value;
+                    panoramaMetadataHeadingSource = 'XMP/GPano';
+                    if (!panoramaCalibrationActive) {
+                        panoramaHeadingDeg = xmp.value;
+                        panoramaHeadingSource = 'XMP/GPano';
+                    }
+                }
+                applyPanoramaHeading();
+            };
+            headingReader.readAsArrayBuffer(file);
 
             EXIF.getData(file, function() {
                 const latTag = EXIF.getTag(this, "GPSLatitude");
                 const latRef = EXIF.getTag(this, "GPSLatitudeRef");
                 const lonTag = EXIF.getTag(this, "GPSLongitude");
                 const lonRef = EXIF.getTag(this, "GPSLongitudeRef");
+                const imgDirection = EXIF.getTag(this, "GPSImgDirection");
+
+                // Fallback heading: EXIF GPSImgDirection jika XMP/GPano tidak tersedia.
+                if (panoramaHeadingSource === 'default' && imgDirection != null) {
+                    const h = (typeof imgDirection === 'object' && imgDirection.numerator != null && imgDirection.denominator)
+                        ? Number(imgDirection.numerator) / Number(imgDirection.denominator)
+                        : Number(imgDirection);
+                    if (Number.isFinite(h)) {
+                        panoramaMetadataHeadingDeg = normalizeHeading(h);
+                        panoramaMetadataHeadingSource = 'EXIF GPSImgDirection';
+                        if (!panoramaCalibrationActive) {
+                            panoramaHeadingDeg = panoramaMetadataHeadingDeg;
+                            panoramaHeadingSource = panoramaMetadataHeadingSource;
+                            applyPanoramaHeading();
+                        }
+                    }
+                }
 
                 if (latTag && lonTag) {
                     const lat = convertDMSToDeg(latTag, latRef);
@@ -244,7 +416,7 @@
                     
                     document.getElementById('info-drone-pos').innerText = `Drone UTM: X=${droneUTM.x.toFixed(1)}, Y=${droneUTM.y.toFixed(1)}`;
                     document.getElementById('sync-status').className = "w-2 h-2 bg-green-500 rounded-full animate-pulse";
-                    document.getElementById('sync-text').innerText = "GPS SYNCED";
+                    document.getElementById('sync-text').innerText = `GPS SYNCED • FOTO ${Math.round(panoramaHeadingDeg)}°`;
 
                     if (rawDxfData) processAndRenderDXF(rawDxfData);
                 } else {
@@ -1287,9 +1459,8 @@
             // Pada scene ini sumbu Three.js: +X = Timur dan -Z = Utara.
             // Rumus lama memakai posisi camera terhadap target sehingga arah Timur/Barat
             // menjadi terbalik setelah panorama + DXF dimuat.
-            const dirX = controls.target.x - camera.position.x;
-            const dirZ = controls.target.z - camera.position.z;
-            const heading = (THREE.MathUtils.radToDeg(Math.atan2(dirX, -dirZ)) + 360) % 360;
+            const heading = getCameraWorldHeading();
+            calCurrentHeading.textContent = `${heading.toFixed(1)}°`;
             
             // Putar jarum kompas searah jarum jam dari Utara.
             compassArrow.style.transform = `rotate(${heading}deg)`;
