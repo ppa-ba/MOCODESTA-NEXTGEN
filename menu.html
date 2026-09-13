@@ -1503,7 +1503,40 @@
   <span class="sep">|</span>
   <a href="https://drive.google.com/drive/folders/1UlWUf4hQ8BzwTtH8bDG14VlgQPeL8XI8?usp=drive_link" target="_blank" rel="noopener noreferrer">Database Foto 360 & File. dxf</a>
 </div>
-
+    <script>
+        document.onkeydown = function(e) {
+        if(event.keyCode == 123) {
+        return false;
+        }
+        if(e.ctrlKey && e.keyCode == 'E'.charCodeAt(0)){
+        return false;
+        }
+        if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)){
+        return false;
+        }
+        if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)){
+        return false;
+        }
+        if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)){
+        return false;
+        }
+        if(e.ctrlKey && e.keyCode == 'S'.charCodeAt(0)){
+        return false;
+        }
+        if(e.ctrlKey && e.keyCode == 'H'.charCodeAt(0)){
+        return false;
+        }
+        if(e.ctrlKey && e.keyCode == 'A'.charCodeAt(0)){
+        return false;
+        }
+        if(e.ctrlKey && e.keyCode == 'F'.charCodeAt(0)){
+        return false;
+        }
+        if(e.ctrlKey && e.keyCode == 'E'.charCodeAt(0)){
+        return false;
+        }
+        }
+        </script>
         <script type="text/javascript">
             //Script for disabling right click on mouse
             var message="Function Disabled!";
@@ -1530,6 +1563,6 @@
             }
             
             document.oncontextmenu=new Function("alert(message);return false")
-    </script>  
+    </script>
 </body>
 </html>
