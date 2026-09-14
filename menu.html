@@ -39,23 +39,38 @@
         </div>
         
         <div class="flex space-x-2 text-xs font-semibold">
-            <button class="px-4 py-2 bg-blue-600 rounded shadow-[0_0_10px_rgba(37,99,235,0.5)]">360° GEO-OVERLAY</button>
+            <button class="px-4 py-2 bg-blue-600 rounded shadow-[0_0_10px_rgba(37,99,235,0.5)]">360°-DXF-OVERLAY</button>
             <div class="flex items-center space-x-2 px-3">
                 <div id="sync-status" class="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
-                <span id="sync-text" class="text-gray-300">WAITING GPS DATA</span>
+                <span id="sync-text" class="text-gray-300">WAITING DATA</span>
             </div>
         </div>
 
         <div class="flex space-x-3 mr-2 text-sm">
             <label class="cursor-pointer px-4 py-2 bg-gray-800 rounded hover:bg-gray-700 transition flex items-center space-x-2">
-                <i class="fas fa-camera"></i> <span>Foto 360 (METADATA)</span>
+                <i class="fas fa-camera"></i> <span>Foto 360 (RAW)</span>
                 <input type="file" id="upload360" accept="image/*" class="hidden">
             </label>
             <label class="cursor-pointer px-4 py-2 bg-gray-800 border border-blue-500 rounded hover:bg-gray-700 transition flex items-center space-x-2">
                 <i class="fas fa-file-alt"></i> <span>File .DXF (UTM)</span>
                 <input type="file" id="uploadDXF" accept=".dxf" class="hidden">
             </label>
+            <label class="cursor-pointer px-4 py-2 bg-emerald-800 rounded hover:bg-emerald-700 transition flex items-center space-x-2">
+                <i class="fas fa-folder-open"></i> <span>Open 360+DXF</span>
+                <input type="file" id="uploadProject" accept=".json,.mocodeproject,image/*" class="hidden">
+            </label>
+            <button id="exportProject" class="px-4 py-2 bg-emerald-600 rounded hover:bg-emerald-500 transition flex items-center space-x-2">
+                <i class="fas fa-file-image"></i> <span>Export 360+DXF</span>
+            </button>
         </div>
+    </div>
+
+    <div class="ui-layer ui-interactive top-20 left-1/2 -translate-x-1/2 glass-panel px-3 py-2 rounded-lg text-xs shadow-xl flex flex-wrap gap-1 items-center">
+        <span class="text-gray-300 mr-1">Zoom <strong id="zoom-percent" class="text-white">100%</strong></span>
+        <button id="zoom-out" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded">−</button>
+        <button id="zoom-reset" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded">100%</button>
+        <button id="zoom-in" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded">+</button>
+        <button id="top-view" class="px-3 py-1 bg-blue-700 hover:bg-blue-600 rounded">Tampak Atas 90°</button>
     </div>
 
     <div class="ui-layer ui-interactive top-20 right-32 glass-panel px-3 py-2 rounded-lg text-xs shadow-xl">
@@ -69,9 +84,9 @@
         </select>
     </div>
 
-    <div id="panorama-calibration" class="ui-layer ui-interactive top-60 right-6 glass-panel p-3 rounded-lg text-xs space-y-2 shadow-xl w-[220px]">
+    <div id="panorama-calibration" class="ui-layer ui-interactive top-60 right-6 glass-panel p-3 rounded-lg text-xs space-y-2 shadow-xl w-[190px]">
         <div class="text-yellow-400 font-semibold"><i class="fas fa-compass"></i> Kalibrasi Foto 360</div>
-        <div class="text-gray-400 leading-relaxed">Cara mudah: arahkan pandangan ke objek yang cocok dengan DXF, lalu gunakan tombol arah di bawah untuk menyamakan foto.</div>
+        <div class="text-[8px] text-gray-400 leading-relaxed">Cara mudah: arahkan pandangan ke objek yang sesuai dengan DXF, lalu gunakan tombol di bawah untuk menggeser foto.</div>
         <div class="flex items-center justify-between gap-2">
             <span class="text-gray-400">Arah kamera</span>
             <span id="cal-current-heading" class="font-mono text-blue-400">0.0°</span>
@@ -82,20 +97,21 @@
             <button data-cal-cardinal="180" class="cal-cardinal px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">S</button>
             <button data-cal-cardinal="270" class="cal-cardinal px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">B</button>
         </div>
-        <div class="text-[10px] text-gray-500">Klik U/T/S/B jika objek yang sedang dilihat berada tepat di arah tersebut.</div>
+        <div class="text-[8px] text-gray-500">Klik U/T/S/B jika objek yang sedang dilihat berada tepat di arah tersebut.</div>
         <div class="flex items-center gap-1">
             <button id="cal-nudge-minus15" class="flex-1 px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">−15°</button>
             <button id="cal-nudge-minus1" class="flex-1 px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">−1°</button>
             <button id="cal-nudge-plus1" class="flex-1 px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">+1°</button>
             <button id="cal-nudge-plus15" class="flex-1 px-1.5 py-1 bg-gray-700 hover:bg-gray-600 rounded">+15°</button>
         </div>
+        <div class="text-[8px] text-gray-500">Klik −15°/−1°/+1°/+15° untuk pergeseran manual dengan satuan derajat.</div>
         <div class="flex items-center gap-2">
             <label for="cal-known-heading" class="text-gray-400 whitespace-nowrap">Azimuth</label>
             <input id="cal-known-heading" type="number" min="0" max="360" step="0.1" value="0" class="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white font-mono">
             <button id="calibrate-panorama" class="px-2 py-1.5 bg-yellow-600 hover:bg-yellow-500 text-black font-semibold rounded whitespace-nowrap">Set</button>
         </div>
         <div class="flex items-center gap-1">
-            <button id="cal-save-view" class="flex-1 px-2 py-1 bg-blue-700 hover:bg-blue-600 rounded">Simpan posisi</button>
+            <button id="cal-save-view" class="flex-1 px-2 py-1 bg-blue-700 hover:bg-blue-600 rounded">Simpan</button>
             <button id="reset-panorama-calibration" class="flex-1 px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-200">Reset</button>
         </div>
         <div id="cal-status" class="text-[10px] text-gray-500">Mode: metadata/default</div>
@@ -115,8 +131,8 @@
     <div class="ui-layer ui-interactive top-20 left-4 space-y-4">
         <div class="glass-panel p-3 rounded-lg text-xs space-y-1">
             <div class="text-blue-400 font-semibold mb-1"><i class="fas fa-map-marker-alt"></i> Status Georeference</div>
-            <div id="info-drone-pos" class="text-gray-300">Drone Pos: Belum dimuat</div>
-            <div id="info-dxf-pos" class="text-gray-300">DXF Anchor: Belum dimuat</div>
+            <div id="info-drone-pos" class="text-[10px] text-gray-300">Drone Pos: Belum dimuat</div>
+            <div id="info-dxf-pos" class="text-[10px] text-gray-300">DXF Anchor: Belum dimuat</div>
         </div>
     </div>
 
@@ -185,6 +201,12 @@
         container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        // Navigasi 360 penuh: dapat berputar ke kiri/kanan, atas/bawah,
+        // termasuk melihat zenith/nadir. Tombol Tampak Atas 90° tetap dipertahankan.
+        controls.enableRotate = true;
+        controls.enablePan = true;
+        controls.minPolarAngle = 0;
+        controls.maxPolarAngle = Math.PI;
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.minDistance = 0.1; 
@@ -333,6 +355,9 @@
 
         let droneUTM = { x: null, y: null };
         let rawDxfData = null;
+        let rawDxfText = "";
+        let currentPanoramaDataUrl = null;
+        let loadedProjectName = "";
         let dxfAnchor = { x: 0, y: 0 };
 
         function convertDMSToDeg(dms, ref) {
@@ -354,6 +379,59 @@
             return directions[index % 8];
         }
 
+        // Kontrol zoom universal dengan indikator persentase yang selalu diperbarui.
+        const zoomPercentEl = document.getElementById('zoom-percent');
+        const DEFAULT_FOV = 75;
+        let zoomPercent = 100;
+        function updateZoomPercent() {
+            if (panoramaLoaded && backgroundSelect.value === 'panorama') {
+                zoomPercent = Math.round((DEFAULT_FOV / camera.fov) * 100);
+            } else {
+                const distance = camera.position.distanceTo(controls.target);
+                const baseDistance = Math.max(1, controls.target.distanceTo(new THREE.Vector3(0, 0, 0)));
+                // Untuk mode DXF, gunakan perubahan jarak relatif sebagai indikator.
+                zoomPercent = Math.max(10, Math.min(1000, Math.round((100 * 10) / Math.max(distance, 0.001))));
+            }
+            if (zoomPercentEl) zoomPercentEl.textContent = `${zoomPercent}%`;
+        }
+        function zoomScene(direction) {
+            const factor = direction > 0 ? 0.82 : 1.22;
+            if (panoramaLoaded && backgroundSelect.value === 'panorama') {
+                camera.fov = Math.max(10, Math.min(100, camera.fov * factor));
+                camera.updateProjectionMatrix();
+            } else {
+                const offset = camera.position.clone().sub(controls.target);
+                offset.multiplyScalar(factor);
+                const len = offset.length();
+                if (len >= 0.05 && len <= 1000000) camera.position.copy(controls.target).add(offset);
+                controls.update();
+            }
+            updateZoomPercent();
+        }
+        document.getElementById('zoom-in').addEventListener('click', () => zoomScene(1));
+        document.getElementById('zoom-out').addEventListener('click', () => zoomScene(-1));
+        document.getElementById('zoom-reset').addEventListener('click', () => {
+            camera.fov = DEFAULT_FOV;
+            camera.updateProjectionMatrix();
+            updateZoomPercent();
+        });
+        document.getElementById('top-view').addEventListener('click', () => {
+            const box = new THREE.Box3().setFromObject(dxfGroup);
+            const center = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
+            const size = box.isEmpty() ? 100 : Math.max(box.getSize(new THREE.Vector3()).x, box.getSize(new THREE.Vector3()).z, 10);
+            controls.target.copy(center);
+            camera.position.set(center.x, center.y + size * 1.8, center.z + 0.001);
+            camera.lookAt(center);
+            controls.update();
+            updateZoomPercent();
+        });
+        renderer.domElement.addEventListener('wheel', (event) => {
+            event.preventDefault();
+            zoomScene(event.deltaY < 0 ? 1 : -1);
+        }, {passive:false});
+        controls.addEventListener('change', updateZoomPercent);
+        updateZoomPercent();
+
         // Upload Foto 360 & Ekstrak GPS EXIF
         document.getElementById('upload360').addEventListener('change', function(event) {
             const file = event.target.files[0];
@@ -362,6 +440,7 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 const dataUrl = e.target.result;
+                currentPanoramaDataUrl = dataUrl;
                 textureLoader.load(dataUrl, function(texture) {
                     sphere.material.dispose();
                     sphere.material = new THREE.MeshBasicMaterial({ map: texture });
@@ -434,6 +513,453 @@
             });
         });
 
+        function downloadText(filename, text, type='application/json') {
+            const blob = new Blob([text], {type});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+        }
+        // ============================================================
+        // EXPORT PANORAMA 360 + DXF
+        // ------------------------------------------------------------
+        // IMPORTANT:
+        // Export TIDAK lagi mengambil screenshot perspektif dari kamera UI.
+        // Screenshot perspektif hanya menghasilkan foto biasa yang ditempel
+        // ke kanvas 2:1, bukan panorama 360 yang sesungguhnya.
+        //
+        // Sekarang scene direkam dari titik pusat panorama menggunakan
+        // THREE.CubeCamera (6 arah @ 90°), lalu diproyeksikan kembali ke
+        // equirectangular 2:1. Dengan demikian foto 360 + DXF benar-benar
+        // menjadi SATU gambar panoramic 360 dan dapat dimuat ulang sebagai
+        // Foto 360.
+        // ============================================================
+        function canvasToBlob(canvas, type='image/jpeg', quality=0.95) {
+            return new Promise(resolve => canvas.toBlob(resolve, type, quality));
+        }
+
+        // Tambahkan metadata Google Photo Sphere / GPano ke JPEG agar
+        // aplikasi yang mendukung metadata panorama dapat mengenalinya
+        // sebagai panorama 360 equirectangular.
+        async function addGPanoXmpToJpeg(blob, width, height) {
+            const buffer = await blob.arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+
+            if (bytes.length < 2 || bytes[0] !== 0xFF || bytes[1] !== 0xD8) {
+                return blob;
+            }
+
+            const xmp = `<?xpacket begin="\\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>` +
+                `<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="MOCODESTA">` +
+                `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">` +
+                `<rdf:Description xmlns:GPano="http://ns.google.com/photos/1.0/panorama/" ` +
+                `GPano:ProjectionType="equirectangular" ` +
+                `GPano:UsePanoramaViewer="True" ` +
+                `GPano:FullPanoWidthPixels="${width}" ` +
+                `GPano:FullPanoHeightPixels="${height}" ` +
+                `GPano:CroppedAreaImageWidthPixels="${width}" ` +
+                `GPano:CroppedAreaImageHeightPixels="${height}" ` +
+                `GPano:FullPanoWidthPixels="${width}" ` +
+                `GPano:CroppedAreaLeftPixels="0" ` +
+                `GPano:CroppedAreaTopPixels="0"/>` +
+                `</rdf:RDF></x:xmpmeta><?xpacket end="w"?>`;
+
+            const header = new TextEncoder().encode('http://ns.adobe.com/xap/1.0/\\0' + xmp);
+            const segmentLength = header.length + 2;
+            if (segmentLength > 0xFFFF) return blob;
+
+            const app1 = new Uint8Array(2 + 2 + header.length);
+            app1[0] = 0xFF; app1[1] = 0xE1;
+            app1[2] = (segmentLength >> 8) & 0xFF;
+            app1[3] = segmentLength & 0xFF;
+            app1.set(header, 4);
+
+            const out = new Uint8Array(bytes.length + app1.length);
+            out.set(bytes.subarray(0, 2), 0); // SOI
+            out.set(app1, 2);                 // XMP APP1
+            out.set(bytes.subarray(2), 2 + app1.length);
+            return new Blob([out], { type: 'image/jpeg' });
+        }
+
+
+        function buildExportThickDXFLines(root, radius = 0.035) {
+            const group = new THREE.Group();
+            group.name = 'DXF_EXPORT_THICK_LINES';
+            group.renderOrder = 3000;
+            group.frustumCulled = false;
+            root.updateMatrixWorld(true);
+            root.traverse(obj => {
+                if (!(obj.isLine || obj.isLineSegments) || !obj.geometry || !obj.geometry.attributes.position) return;
+                const pos = obj.geometry.attributes.position;
+                const pts = [];
+                for (let i=0; i<pos.count; i++) {
+                    const q = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(obj.matrixWorld);
+                    pts.push(q);
+                }
+                const step = obj.isLineSegments ? 2 : 1;
+                for (let i=0; i+1<pts.length; i+=step) {
+                    const a=pts[i], b=pts[i+1];
+                    const d=b.clone().sub(a), len=d.length();
+                    if (len < 1e-8) continue;
+                    const mid=a.clone().add(b).multiplyScalar(0.5);
+                    const geo=new THREE.CylinderGeometry(radius, radius, len, 8, 1, false);
+                    const mat=new THREE.MeshBasicMaterial({
+                        color: obj.material && obj.material.color ? obj.material.color.getHex() : 0xffffff,
+                        transparent:false, opacity:1, depthTest:false, depthWrite:false
+                    });
+                    const cyl=new THREE.Mesh(geo,mat);
+                    cyl.position.copy(mid);
+                    cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), d.normalize());
+                    cyl.renderOrder=3000; cyl.frustumCulled=false;
+                    group.add(cyl);
+                }
+            });
+            scene.add(group);
+            return group;
+        }
+
+        async function exportTrueEquirectangular360() {
+            if (!panoramaLoaded) {
+                alert('Load Foto 360 terlebih dahulu. Export gabungan membutuhkan foto 360 sebagai dasar panorama.');
+                return;
+            }
+
+            /*
+             * EXPORT HIGH QUALITY 360 + DXF
+             * - Output tetap equirectangular 2:1 dan terbaca sebagai Foto 360.
+             * - Perbaikan orientasi: vUv.y dikonversi ke latitude dengan arah yang benar.
+             * - readRenderTargetPixels tetap dibalik baris sekali saja (konversi WebGL -> Canvas).
+             * - Resolusi adaptif: sampai 8192x4096 pada GPU yang mendukung.
+             * - Cubemap mengikuti resolusi export agar line, titik, dan teks DXF tidak terlalu blur.
+             * - JPEG quality 1.0 untuk meminimalkan artefak kompresi.
+             */
+            const maxTextureSize = renderer.capabilities.maxTextureSize || 4096;
+
+            // Jangan memaksa resolusi yang melampaui kemampuan GPU/perangkat.
+            // Desktop modern: 8192x4096. Mobile/GPU terbatas: turun otomatis.
+            const exportWidth = Math.min(8192, maxTextureSize);
+            const exportHeight = Math.round(exportWidth / 2);
+
+            // Cubemap 4096/face memberi kualitas jauh lebih baik daripada 1024/2048,
+            // tetapi tetap aman pada perangkat dengan batas texture size lebih rendah.
+            const cubeSize = Math.min(4096, maxTextureSize);
+
+            if (exportWidth < 2048) {
+                alert(`GPU/perangkat hanya mendukung export hingga ${exportWidth} px. Hasil tetap 360 equirectangular, tetapi resolusi mengikuti kemampuan perangkat.`);
+            }
+
+            const oldSelectionVisible = dxfSelectionGroup.visible;
+            const oldSphereVisible = sphere.visible;
+            const oldDxfVisible = dxfGroup.visible;
+            const oldCameraPosition = camera.position.clone();
+            const oldCameraRotation = camera.rotation.clone();
+            const oldTarget = controls.target.clone();
+            const oldPixelRatio = renderer.getPixelRatio();
+
+            let cubeTarget = null;
+            let cubeCamera = null;
+            let exportTarget = null;
+            let exportGeometry = null;
+            let exportMaterial = null;
+
+            try {
+                dxfSelectionGroup.visible = false;
+
+                // Export tidak boleh bergantung pada zoom/FOV kamera UI.
+                // Cubemap selalu diambil tepat dari pusat panorama.
+                cubeTarget = new THREE.WebGLCubeRenderTarget(cubeSize, {
+                    format: THREE.RGBAFormat,
+                    type: THREE.UnsignedByteType,
+                    generateMipmaps: false,
+                    minFilter: THREE.NearestFilter,
+                    magFilter: THREE.NearestFilter,
+                    anisotropy: renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1,
+                    depthBuffer: true,
+                    stencilBuffer: false
+                });
+
+                cubeCamera = new THREE.CubeCamera(0.01, 1000000, cubeTarget);
+                cubeCamera.position.set(0, 0, 0);
+                scene.add(cubeCamera);
+
+                // Pastikan semua data yang terlihat pada viewer ikut masuk export.
+                sphere.visible = true;
+                dxfGroup.visible = oldDxfVisible;
+
+                // Rendering kualitas tinggi.
+                renderer.setPixelRatio(1);
+
+                // EXPORT DXF ENHANCEMENT:
+                // Samakan tampilan dengan viewport yang sudah dikalibrasi, tetapi
+                // pertahankan detail DXF ketika diproyeksikan ke cubemap.
+                // Sprite teks/titik sering terlihat terlalu kecil setelah proses
+                // cubemap -> equirectangular, sehingga hanya selama export
+                // ukuran visual dan opacity-nya diperkuat lalu dipulihkan.
+                const exportDxfState = [];
+                dxfGroup.traverse((obj) => {
+                    const state = { obj, scale: obj.scale.clone(), opacity: null, size: null, color: null, linewidth: null };
+                    if (obj.material) {
+                        if (Array.isArray(obj.material)) {
+                            state.opacity = obj.material.map(m => m.opacity);
+                            obj.material.forEach(m => { m.transparent = true; m.opacity = 1.0; });
+                        } else {
+                            state.opacity = [obj.material.opacity];
+                            state.color = obj.material.color ? obj.material.color.getHex() : null;
+                            state.linewidth = obj.material.linewidth !== undefined ? obj.material.linewidth : null;
+                            obj.material.transparent = true;
+                            obj.material.opacity = 1.0;
+                            if (obj.material.color) obj.material.color.offsetHSL(0, 0, 0.18);
+                            if (obj.material.linewidth !== undefined) obj.material.linewidth = Math.max(obj.material.linewidth, 12);
+                            if (obj.material.size !== undefined) {
+                                state.size = obj.material.size;
+                                obj.material.size = Math.max(obj.material.size, 18);
+                            }
+                        }
+                    }
+                    // Text and point sprites need a modest export-only scale boost.
+                    if (obj.isSprite) obj.scale.multiplyScalar(1.35);
+                    if (obj.isPoints) obj.scale.multiplyScalar(2.0);
+                    obj.renderOrder = Math.max(Number(obj.renderOrder) || 0, 1000);
+                    // Pastikan DXF tidak tertutup oleh permukaan panorama.
+                    if (obj.material && obj.material.depthTest !== undefined) {
+                        obj.material.depthTest = false;
+                        obj.material.depthWrite = false;
+                    }
+                    exportDxfState.push(state);
+                });
+
+                // Render line/polyline as real 3D cylinders during export.
+                // This avoids WebGL linewidth limitations that cause broken/faint lines.
+                const exportThickDXF = buildExportThickDXFLines(dxfGroup, 0.045);
+
+                cubeCamera.update(renderer, scene);
+
+                /*
+                 * Cubemap -> equirectangular.
+                 * IMPORTANT:
+                 * readRenderTargetPixels() mengembalikan baris dari bawah ke atas,
+                 * sehingga nanti kita hanya membalik baris sekali saat masuk Canvas.
+                 *
+                 * Untuk equirectangular Canvas:
+                 *   vUv.y = 1 -> latitude +90° (atas / North pole)
+                 *   vUv.y = 0 -> latitude -90° (bawah / South pole)
+                 *
+                 * Versi lama memakai (0.5 - vUv.y), sehingga utara/selatan terbalik.
+                 */
+                const exportScene = new THREE.Scene();
+                const exportCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+                exportGeometry = new THREE.PlaneGeometry(2, 2);
+                exportMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        tCube: { value: cubeTarget.texture }
+                    },
+                    vertexShader: `
+                        varying vec2 vUv;
+                        void main() {
+                            vUv = uv;
+                            gl_Position = vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform samplerCube tCube;
+                        varying vec2 vUv;
+                        const float PI = 3.1415926535897932384626433832795;
+
+                        void main() {
+                            // Equirectangular longitude: -180° .. +180°
+                            float lon = (vUv.x - 0.5) * 2.0 * PI;
+
+                            // FIX ORIENTASI VERTIKAL:
+                            // top canvas = +90° latitude, bottom = -90° latitude.
+                            float lat = (vUv.y - 0.5) * PI;
+
+                            float cosLat = cos(lat);
+                            vec3 dir = normalize(vec3(
+                                sin(lon) * cosLat,
+                                sin(lat),
+                                -cos(lon) * cosLat
+                            ));
+
+                            gl_FragColor = textureCube(tCube, dir);
+                        }
+                    `,
+                    depthTest: false,
+                    depthWrite: false
+                });
+
+                const exportQuad = new THREE.Mesh(exportGeometry, exportMaterial);
+                exportScene.add(exportQuad);
+
+                exportTarget = new THREE.WebGLRenderTarget(exportWidth, exportHeight, {
+                    format: THREE.RGBAFormat,
+                    type: THREE.UnsignedByteType,
+                    depthBuffer: false,
+                    stencilBuffer: false,
+                    minFilter: THREE.NearestFilter,
+                    magFilter: THREE.NearestFilter,
+                    anisotropy: renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1
+                });
+
+                renderer.setRenderTarget(exportTarget);
+                renderer.render(exportScene, exportCamera);
+
+                const pixels = new Uint8Array(exportWidth * exportHeight * 4);
+                renderer.readRenderTargetPixels(
+                    exportTarget,
+                    0, 0,
+                    exportWidth,
+                    exportHeight,
+                    pixels
+                );
+                renderer.setRenderTarget(null);
+
+                // WebGL origin = bottom-left; Canvas origin = top-left.
+                // Balik BARIS tepat satu kali. Jangan melakukan flip kedua.
+                const exportCanvas = document.createElement('canvas');
+                exportCanvas.width = exportWidth;
+                exportCanvas.height = exportHeight;
+
+                const ctx = exportCanvas.getContext('2d', {
+                    alpha: false,
+                    willReadFrequently: false
+                });
+
+                const imageData = ctx.createImageData(exportWidth, exportHeight);
+                const rowBytes = exportWidth * 4;
+
+                for (let y = 0; y < exportHeight; y++) {
+                    const srcStart = (exportHeight - 1 - y) * rowBytes;
+                    const dstStart = y * rowBytes;
+                    imageData.data.set(
+                        pixels.subarray(srcStart, srcStart + rowBytes),
+                        dstStart
+                    );
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+
+                // JPEG quality maksimum untuk menjaga detail panorama + garis DXF.
+                // 1.0 mengurangi blur/artefak kompresi yang terlihat pada export lama.
+                let blob = await canvasToBlob(exportCanvas, 'image/jpeg', 1.0);
+                if (!blob) throw new Error('Browser gagal membuat file JPEG export.');
+
+                blob = await addGPanoXmpToJpeg(blob, exportWidth, exportHeight);
+
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `panorama-360-DXF-GABUNGAN-${exportWidth}x${exportHeight}-HQ.jpg`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+                if (exportThickDXF) {
+                    exportThickDXF.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+                    scene.remove(exportThickDXF);
+                }
+
+                // Pulihkan tampilan DXF persis seperti sebelum export.
+                for (const state of exportDxfState) {
+                    const obj = state.obj;
+                    obj.scale.copy(state.scale);
+                    if (obj.material && state.opacity) {
+                        if (Array.isArray(obj.material)) {
+                            obj.material.forEach((m, i) => { m.opacity = state.opacity[i]; });
+                        } else {
+                            obj.material.opacity = state.opacity[0];
+                            if (state.color !== null && obj.material.color) obj.material.color.setHex(state.color);
+                            if (state.linewidth !== null && obj.material.linewidth !== undefined) obj.material.linewidth = state.linewidth;
+                            if (state.size !== null && obj.material.size !== undefined) obj.material.size = state.size;
+                        }
+                    }
+                }
+
+                // Bersihkan object export.
+                exportScene.remove(exportQuad);
+                exportGeometry.dispose();
+                exportMaterial.dispose();
+
+            } finally {
+                if (cubeCamera) scene.remove(cubeCamera);
+                if (cubeTarget) cubeTarget.dispose();
+                if (exportTarget) exportTarget.dispose();
+
+                // Pulihkan tampilan UI persis seperti sebelum export.
+                dxfSelectionGroup.visible = oldSelectionVisible;
+                sphere.visible = oldSphereVisible;
+                dxfGroup.visible = oldDxfVisible;
+
+                camera.position.copy(oldCameraPosition);
+                camera.rotation.copy(oldCameraRotation);
+                controls.target.copy(oldTarget);
+                controls.update();
+
+                renderer.setPixelRatio(oldPixelRatio);
+                renderer.setRenderTarget(null);
+                renderer.render(scene, camera);
+            }
+        }
+
+
+        document.getElementById('exportProject').addEventListener('click', () => {
+            exportTrueEquirectangular360().catch(err => {
+                console.error('Export panorama 360 gagal:', err);
+                alert('Export panorama 360 gagal: ' + (err && err.message ? err.message : err));
+                renderer.setRenderTarget(null);
+            });
+        });
+
+        // Project loader menerima FOTO PNG/JPG hasil gabungan maupun project lama JSON.
+        document.getElementById('uploadProject').addEventListener('change', function(event) {
+            const file = event.target.files[0]; if (!file) return;
+            loadedProjectName = file.name;
+            if (file.type && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    currentPanoramaDataUrl = reader.result;
+                    textureLoader.load(currentPanoramaDataUrl, texture => {
+                        sphere.material.dispose();
+                        sphere.material = new THREE.MeshBasicMaterial({map:texture});
+                        panoramaLoaded = true;
+                        panoramaHeadingDeg = 0;
+                        panoramaHeadingSource = 'foto gabungan';
+                        applyPanoramaHeading();
+                        backgroundSelect.value = 'panorama';
+                        applyBackgroundMode('panorama');
+                        document.getElementById('sync-text').innerText = 'FOTO GABUNGAN LOADED';
+                    });
+                };
+                reader.readAsDataURL(file);
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const project = JSON.parse(reader.result);
+                    if (project.format !== 'MOCODESTA-360-DXF-PROJECT') throw new Error('Format project tidak dikenali');
+                    if (project.panoramaDataUrl) {
+                        currentPanoramaDataUrl = project.panoramaDataUrl;
+                        textureLoader.load(project.panoramaDataUrl, texture => {
+                            sphere.material.dispose(); sphere.material = new THREE.MeshBasicMaterial({map:texture});
+                            panoramaLoaded = true; applyPanoramaHeading(); applyBackgroundMode(project.background || 'panorama');
+                        });
+                    }
+                    if (project.dxfText) {
+                        rawDxfText = project.dxfText; rawDxfData = new DxfParser().parseSync(rawDxfText); processAndRenderDXF(rawDxfData);
+                    }
+                    if (project.droneUTM) droneUTM = project.droneUTM;
+                    if (project.dxfAnchor) dxfAnchor = project.dxfAnchor;
+                    if (Number.isFinite(project.panoramaHeadingDeg)) panoramaHeadingDeg = project.panoramaHeadingDeg;
+                    panoramaCalibrationActive = !!project.panoramaCalibrationActive;
+                    panoramaHeadingSource = panoramaCalibrationActive ? 'project calibration' : 'project';
+                    applyPanoramaHeading();
+                    document.getElementById('info-drone-pos').innerText = droneUTM.x != null ? `Drone UTM: X=${Number(droneUTM.x).toFixed(1)}, Y=${Number(droneUTM.y).toFixed(1)}` : 'Drone Pos: Belum dimuat';
+                } catch (err) { alert('Gagal membuka project: ' + err.message); }
+            };
+            reader.readAsText(file);
+        });
+
         // Upload DXF
         document.getElementById('uploadDXF').addEventListener('change', function(event) {
             const file = event.target.files[0];
@@ -443,6 +969,7 @@
             reader.onload = function(e) {
                 try {
                     const parser = new DxfParser();
+                    rawDxfText = e.target.result;
                     rawDxfData = parser.parseSync(e.target.result);
                     processAndRenderDXF(rawDxfData);
                 } catch (err) {
@@ -646,11 +1173,13 @@
             const material = new THREE.LineBasicMaterial({
                 color: color,
                 transparent: true,
-                opacity: 0.98,
-                depthTest: false
+                opacity: 1.0,
+                depthTest: false,
+                depthWrite: false
             });
             const line = new THREE.Line(geometry, material);
-            line.renderOrder = 10;
+            line.renderOrder = 1200;
+            line.frustumCulled = false;
             line.userData.dxfSelectable = true;
             if (metadata) {
                 line.userData.dxfEntity = metadata.entity || null;
@@ -688,12 +1217,13 @@
             if (!text) return null;
 
             const lines = text.split(/\r?\n/);
-            const fontPx = 96;
-            const linePx = 112;
-            const padding = 24;
+            // Raster teks DXF dibuat jauh lebih besar supaya tetap tajam saat export 8K.
+            const fontPx = 144;
+            const linePx = 168;
+            const padding = 32;
             const longest = lines.reduce((m, x) => Math.max(m, x.length), 1);
-            const widthPx = Math.max(128, longest * fontPx * 0.62 + padding * 2);
-            const heightPx = Math.max(128, lines.length * linePx + padding * 2);
+            const widthPx = Math.min(4096, Math.max(256, longest * fontPx * 0.62 + padding * 2));
+            const heightPx = Math.min(4096, Math.max(256, lines.length * linePx + padding * 2));
 
             const canvas = document.createElement("canvas");
             canvas.width = Math.ceil(widthPx);
@@ -716,6 +1246,7 @@
             texture.needsUpdate = true;
             texture.minFilter = THREE.LinearFilter;
             texture.magFilter = THREE.LinearFilter;
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1;
 
             const material = new THREE.SpriteMaterial({
                 map: texture,
@@ -728,7 +1259,12 @@
             const worldHeight = Math.max(Number(height) || 1, 0.01);
             const aspect = canvas.width / canvas.height;
             sprite.scale.set(worldHeight * aspect, worldHeight, 1);
-            sprite.rotation = THREE.MathUtils.degToRad(Number(rotation) || 0);
+            // Sprite selalu menghadap kamera. Koreksi sudut agar teks tidak terbalik
+            // pada sisi belakang/arah cubemap yang berbeda.
+            let safeRotation = Number(rotation) || 0;
+            safeRotation = ((safeRotation % 360) + 360) % 360;
+            if (safeRotation > 90 && safeRotation < 270) safeRotation += 180;
+            sprite.rotation = THREE.MathUtils.degToRad(safeRotation);
             sprite.renderOrder = 100;
 
             sprite.userData.dxfText = text;
@@ -1275,7 +1811,7 @@
                         transparent: true,
                         opacity: 1,
                         depthTest: false,
-                        linewidth: 6
+                        linewidth: 12
                     });
                     const glow = new THREE.Line(src.geometry, mat);
                     glow.position.copy(src.position);
@@ -1493,76 +2029,77 @@
     </script>
 
 <style>
-#app-copyright-footer{position:fixed;left:0;right:0;bottom:0;z-index:1000;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;padding:7px 12px;font:12px/1.3 Arial,sans-serif;border-top:1px}
-#app-copyright-footer a{color:#60a5fa;text-decoration:none;font-weight:600}#app-copyright-footer a:hover{text-decoration:underline}#app-copyright-footer .sep{opacity:.45}
-@media(max-width:600px){#app-copyright-footer{font-size:11px;padding:6px 8px;gap:6px}}
-</style>
-<div id="app-copyright-footer" aria-label="Copyright information">
-  <span>© 2026 MOCODESTA NEXT GENERATION. ALL rights reserved.</span>
-
-  <span class="sep">|</span>
-  <a href="https://drive.google.com/drive/folders/1UlWUf4hQ8BzwTtH8bDG14VlgQPeL8XI8?usp=drive_link" target="_blank" rel="noopener noreferrer">Database Foto 360 & File. dxf</a>
-</div>
-    <script>
-        document.onkeydown = function(e) {
-        if(event.keyCode == 123) {
-        return false;
-        }
-        if(e.ctrlKey && e.keyCode == 'E'.charCodeAt(0)){
-        return false;
-        }
-        if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)){
-        return false;
-        }
-        if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)){
-        return false;
-        }
-        if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)){
-        return false;
-        }
-        if(e.ctrlKey && e.keyCode == 'S'.charCodeAt(0)){
-        return false;
-        }
-        if(e.ctrlKey && e.keyCode == 'H'.charCodeAt(0)){
-        return false;
-        }
-        if(e.ctrlKey && e.keyCode == 'A'.charCodeAt(0)){
-        return false;
-        }
-        if(e.ctrlKey && e.keyCode == 'F'.charCodeAt(0)){
-        return false;
-        }
-        if(e.ctrlKey && e.keyCode == 'E'.charCodeAt(0)){
-        return false;
-        }
-        }
+    #app-copyright-footer{position:fixed;left:0;right:0;bottom:0;z-index:1000;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;padding:7px 12px;font:11px/1.3 Arial,sans-serif;border-top:1px}
+    #app-copyright-footer a{color:#60a5fa;text-decoration:none;font-weight:600}#app-copyright-footer a:hover{text-decoration:underline}#app-copyright-footer .sep{opacity:.45}
+    @media(max-width:600px){#app-copyright-footer{font-size:11px;padding:6px 8px;gap:6px}}
+    </style>
+    <div id="app-copyright-footer" aria-label="Copyright information">
+      <span>© 2026 MOCODESTA NEXT GENERATION. ALL rights reserved.</span>
+    
+      <span class="sep">|</span>
+      <a href="https://drive.google.com/drive/folders/1UlWUf4hQ8BzwTtH8bDG14VlgQPeL8XI8?usp=drive_link" target="_blank" rel="noopener noreferrer">Database Foto 360 & File. dxf</a>
+    </div>
+        <script>
+            document.onkeydown = function(e) {
+            if(event.keyCode == 123) {
+            return false;
+            }
+            if(e.ctrlKey && e.keyCode == 'E'.charCodeAt(0)){
+            return false;
+            }
+            if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)){
+            return false;
+            }
+            if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)){
+            return false;
+            }
+            if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)){
+            return false;
+            }
+            if(e.ctrlKey && e.keyCode == 'S'.charCodeAt(0)){
+            return false;
+            }
+            if(e.ctrlKey && e.keyCode == 'H'.charCodeAt(0)){
+            return false;
+            }
+            if(e.ctrlKey && e.keyCode == 'A'.charCodeAt(0)){
+            return false;
+            }
+            if(e.ctrlKey && e.keyCode == 'F'.charCodeAt(0)){
+            return false;
+            }
+            if(e.ctrlKey && e.keyCode == 'E'.charCodeAt(0)){
+            return false;
+            }
+            }
+            </script>
+            <script type="text/javascript">
+                //Script for disabling right click on mouse
+                var message="SILAHKAN MULAI DENGAN MEMASUKKAN FOTO 360 DAN FILE. DXF ATAU MASUKKAN GABUNGAN FOTO 360 + DXF";
+                function clickdsb(){
+                if (event.button==2){
+                alert(message);
+                return false;
+                }
+                }
+                function clickbsb(e){
+                if (document.layers||document.getElementById&&!document.all){
+                if (e.which==2||e.which==3){
+                alert(message);
+                return false;
+                }
+                }
+                }
+                if (document.layers){
+                document.captureEvents(Event.MOUSEDOWN);
+                document.onmousedown=clickbsb;
+                }
+                else if (document.all&&!document.getElementById){
+                document.onmousedown=clickdsb;
+                }
+                
+                document.oncontextmenu=new Function("alert(message);return false")
         </script>
-        <script type="text/javascript">
-            //Script for disabling right click on mouse
-            var message="SILAHKAN MULAI DENGAN MEMASUKKAN FOTO 360 DAN FILE. DXF";
-            function clickdsb(){
-            if (event.button==2){
-            alert(message);
-            return false;
-            }
-            }
-            function clickbsb(e){
-            if (document.layers||document.getElementById&&!document.all){
-            if (e.which==2||e.which==3){
-            alert(message);
-            return false;
-            }
-            }
-            }
-            if (document.layers){
-            document.captureEvents(Event.MOUSEDOWN);
-            document.onmousedown=clickbsb;
-            }
-            else if (document.all&&!document.getElementById){
-            document.onmousedown=clickdsb;
-            }
-            
-            document.oncontextmenu=new Function("alert(message);return false")
-    </script>
+
 </body>
 </html>
