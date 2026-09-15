@@ -32,14 +32,14 @@
 
     <div id="canvas-container"></div>
 
-    <div class="ui-layer ui-interactive top-0 w-full flex justify-between items-center p-2 glass-panel">
+    <div class="ui-layer ui-interactive top-0 w-full flex justify-between items-center p-1 glass-panel">
         <div class="flex items-center space-x-4 ml-2">
             <div class="bg-red-600 rounded p-1"><i class="fa-sharp fa-regular fa-square-m"></i></div>
             <h1 class="font-bold text-sm tracking-wide">MOCODESTA NEXT GENERATION<span class="text-xs font-normal text-gray-400"> Created by Rahmat Supriyanto</span></h1>
         </div>
         
         <div class="flex space-x-2 text-xs font-semibold">
-            <button class="px-4 py-2 bg-blue-600 rounded shadow-[0_0_10px_rgba(37,99,235,0.5)]">360°-DXF-OVERLAY</button>
+            <button class="px-2 py-1 bg-blue-600 rounded shadow-[0_0_10px_rgba(37,99,235,0.5)]">360°-DXF-OVERLAY</button>
             <div class="flex items-center space-x-2 px-3">
                 <div id="sync-status" class="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
                 <span id="sync-text" class="text-gray-300">WAITING DATA</span>
@@ -47,25 +47,25 @@
         </div>
 
         <div class="flex space-x-3 mr-2 text-sm">
-            <label class="cursor-pointer px-4 py-2 bg-gray-800 rounded hover:bg-gray-700 transition flex items-center space-x-2">
+            <label class="cursor-pointer px-2 py-1 bg-gray-800 rounded hover:bg-gray-700 transition flex items-center space-x-2">
                 <i class="fas fa-camera"></i> <span>Foto 360 (RAW)</span>
                 <input type="file" id="upload360" accept="image/*" class="hidden">
             </label>
-            <label class="cursor-pointer px-4 py-2 bg-gray-800 border border-blue-500 rounded hover:bg-gray-700 transition flex items-center space-x-2">
+            <label class="cursor-pointer px-2 py-1 bg-gray-800 border border-blue-500 rounded hover:bg-gray-700 transition flex items-center space-x-2">
                 <i class="fas fa-file-alt"></i> <span>File .DXF (UTM)</span>
                 <input type="file" id="uploadDXF" accept=".dxf" class="hidden">
             </label>
-            <label class="cursor-pointer px-4 py-2 bg-emerald-800 rounded hover:bg-emerald-700 transition flex items-center space-x-2">
+            <label class="cursor-pointer px-2 py-1 bg-emerald-800 rounded hover:bg-emerald-700 transition flex items-center space-x-2">
                 <i class="fas fa-folder-open"></i> <span>Open 360+DXF</span>
                 <input type="file" id="uploadProject" accept=".json,.mocodeproject,image/*" class="hidden">
             </label>
-            <button id="exportProject" class="px-4 py-2 bg-emerald-600 rounded hover:bg-emerald-500 transition flex items-center space-x-2">
+            <button id="exportProject" class="px-2 py-1 bg-emerald-600 rounded hover:bg-emerald-500 transition flex items-center space-x-2">
                 <i class="fas fa-file-image"></i> <span>Export 360+DXF</span>
             </button>
         </div>
     </div>
 
-    <div class="ui-layer ui-interactive top-20 left-1/2 -translate-x-1/2 glass-panel px-3 py-2 rounded-lg text-xs shadow-xl flex flex-wrap gap-1 items-center">
+    <div class="ui-layer ui-interactive top-20 left-1/2 -translate-x-1/2 rounded-lg text-xs shadow-xl flex flex-wrap gap-1 items-center">
         <span class="text-gray-300 mr-1">Zoom <strong id="zoom-percent" class="text-white">100%</strong></span>
         <button id="zoom-out" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded">−</button>
         <button id="zoom-reset" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded">100%</button>
@@ -73,7 +73,7 @@
         <button id="top-view" class="px-3 py-1 bg-blue-700 hover:bg-blue-600 rounded">Tampak Atas 90°</button>
     </div>
 
-    <div class="ui-layer ui-interactive top-20 right-32 glass-panel px-3 py-2 rounded-lg text-xs shadow-xl">
+    <div class="ui-layer ui-interactive top-20 right-32 rounded-lg text-xs shadow-xl">
         <label for="background-select" class="text-gray-300 mr-2"><i class="fas fa-palette"></i> Background</label>
         <select id="background-select" class="bg-select rounded px-2 py-1 text-xs">
             <option value="panorama">Foto 360</option>
@@ -84,7 +84,7 @@
         </select>
     </div>
 
-    <div id="panorama-calibration" class="ui-layer ui-interactive top-60 right-6 glass-panel p-3 rounded-lg text-xs space-y-2 shadow-xl w-[190px]">
+    <div id="panorama-calibration" class="ui-layer ui-interactive top-60 right-6 glass-panel p-2 rounded-lg text-xs space-y-2 shadow-xl w-[190px]">
         <div class="text-yellow-400 font-semibold"><i class="fas fa-compass"></i> Kalibrasi Foto 360</div>
         <div class="text-[8px] text-gray-400 leading-relaxed">Cara mudah: arahkan pandangan ke objek yang sesuai dengan DXF, lalu gunakan tombol di bawah untuk menggeser foto.</div>
         <div class="flex items-center justify-between gap-2">
@@ -117,7 +117,7 @@
         <div id="cal-status" class="text-[10px] text-gray-500">Mode: metadata/default</div>
     </div>
 
-    <div id="dxf-coordinate-panel" class="ui-layer ui-interactive top-44 left-4 glass-panel p-3 rounded-lg text-xs space-y-1 hidden min-w-[245px] shadow-xl">
+    <div id="dxf-coordinate-panel" class="ui-layer ui-interactive top-44 left-4 glass-panel p-2 rounded-lg text-xs space-y-1 hidden min-w-[200px] shadow-xl">
         <div class="text-green-400 font-semibold mb-1"><i class="fas fa-crosshairs"></i> Informasi DXF</div>
         <div id="dxf-selected-type" class="text-gray-300">Entity: -</div>
         <div id="dxf-selected-layer" class="text-gray-300">Layer: -</div>
@@ -129,7 +129,7 @@
     </div>
 
     <div class="ui-layer ui-interactive top-20 left-4 space-y-4">
-        <div class="glass-panel p-3 rounded-lg text-xs space-y-1">
+        <div class="glass-panel p-2 rounded-lg text-xs space-y-1">
             <div class="text-blue-400 font-semibold mb-1"><i class="fas fa-map-marker-alt"></i> Status Georeference</div>
             <div id="info-drone-pos" class="text-[10px] text-gray-300">Drone Pos: Belum dimuat</div>
             <div id="info-dxf-pos" class="text-[10px] text-gray-300">DXF Anchor: Belum dimuat</div>
